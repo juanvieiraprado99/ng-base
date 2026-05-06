@@ -15,6 +15,7 @@ export interface NgxBaseCliConfig {
   authTokenName: string;
   authTokenImportPath: string;
   generateErrorInterceptor: boolean;
+  generateLoggingInterceptor: boolean;
   generateBarrel: boolean;
   generateProjectStructure: boolean;
 }
@@ -29,6 +30,7 @@ export const DEFAULT_NGX_BASE_CONFIG: NgxBaseCliConfig = {
   authTokenName: "AUTH_TOKEN",
   authTokenImportPath: "@core/tokens",
   generateErrorInterceptor: false,
+  generateLoggingInterceptor: false,
   generateBarrel: true,
   generateProjectStructure: false,
 };
@@ -37,6 +39,16 @@ export function configPath(cwd: string): string {
   return path.join(cwd, NGX_BASE_CLI_CONFIG_FILENAME);
 }
 
+const VALID_STORAGE_ENGINES: StorageEngine[] = [
+  "localStorage",
+  "sessionStorage",
+  "memory",
+];
+const VALID_IMPORT_STYLES: NgxBaseCliConfig["importStyle"][] = [
+  "alias",
+  "relative",
+];
+
 export async function readNgxBaseConfig(
   cwd: string
 ): Promise<NgxBaseCliConfig | null> {
@@ -44,7 +56,34 @@ export async function readNgxBaseConfig(
   if (!(await fse.pathExists(p))) return null;
   const raw = await fse.readFile(p, "utf8");
   const parsed = JSON.parse(raw) as Partial<NgxBaseCliConfig>;
-  return { ...DEFAULT_NGX_BASE_CONFIG, ...parsed };
+
+  const merged: NgxBaseCliConfig = { ...DEFAULT_NGX_BASE_CONFIG, ...parsed };
+
+  if (
+    parsed.storageEngine !== undefined &&
+    !VALID_STORAGE_ENGINES.includes(parsed.storageEngine as StorageEngine)
+  ) {
+    console.warn(
+      `[ngx-base-cli] Invalid storageEngine "${parsed.storageEngine}". ` +
+        `Allowed: ${VALID_STORAGE_ENGINES.join(", ")}. Using default "${DEFAULT_NGX_BASE_CONFIG.storageEngine}".`
+    );
+    merged.storageEngine = DEFAULT_NGX_BASE_CONFIG.storageEngine;
+  }
+
+  if (
+    parsed.importStyle !== undefined &&
+    !VALID_IMPORT_STYLES.includes(
+      parsed.importStyle as NgxBaseCliConfig["importStyle"]
+    )
+  ) {
+    console.warn(
+      `[ngx-base-cli] Invalid importStyle "${parsed.importStyle}". ` +
+        `Allowed: ${VALID_IMPORT_STYLES.join(", ")}. Using default "${DEFAULT_NGX_BASE_CONFIG.importStyle}".`
+    );
+    merged.importStyle = DEFAULT_NGX_BASE_CONFIG.importStyle;
+  }
+
+  return merged;
 }
 
 export async function writeNgxBaseConfig(

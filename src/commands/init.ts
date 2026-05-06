@@ -10,14 +10,24 @@ import type { NgxBaseCliConfig, StorageEngine } from "../lib/config.js";
 import { writeNgxBaseConfig } from "../lib/config.js";
 import { buildGenerationTargets } from "../lib/generate-plan.js";
 import { importFromSrcApp } from "../lib/import-paths.js";
+import {
+  PRESET_DESCRIPTIONS,
+  PRESETS,
+  type PresetName,
+} from "../lib/presets.js";
 import { renderGenerationTarget } from "../lib/render-target.js";
 
-export async function runInit(cwd: string = process.cwd()): Promise<void> {
+export async function runInit(
+  cwd: string = process.cwd(),
+  yes = false
+): Promise<void> {
   p.intro(pc.inverse(" ngx-base-cli init "));
 
   const pkgPath = path.join(cwd, "package.json");
   if (!(await fse.pathExists(pkgPath))) {
-    p.outro(pc.red("package.json not found. Run this command from the project root."));
+    p.outro(
+      pc.red("package.json not found. Run this command from the project root.")
+    );
     process.exitCode = 1;
     return;
   }
@@ -43,6 +53,91 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   const angularVersion = parseAngularCoreVersion(deps["@angular/core"]);
   const httpResourceSupported = versionSupportsHttpResource(angularVersion);
 
+  let config: NgxBaseCliConfig | null = null;
+
+  if (yes) {
+    const presetName = await p.select<PresetName>({
+      message: "Which preset would you like to use?",
+      options: (
+        Object.keys(PRESETS) as PresetName[]
+      ).map((key) => ({
+        value: key,
+        label: key,
+        hint: PRESET_DESCRIPTIONS[key],
+      })),
+      initialValue: "standard" as PresetName,
+    });
+    if (p.isCancel(presetName)) {
+      p.cancel("Cancelled.");
+      return;
+    }
+    config = { ...PRESETS[presetName] };
+    p.log.success(
+      pc.green(`Using preset "${presetName}": ${PRESET_DESCRIPTIONS[presetName]}`)
+    );
+  } else {
+    config = await runInteractivePrompts(cwd, deps, httpResourceSupported, angularVersion);
+  }
+
+  if (!config) return;
+
+  const targets = buildGenerationTargets(cwd, config);
+
+  for (const t of targets) {
+    await fse.mkdir(path.dirname(t.outPath), { recursive: true });
+
+    if (await fse.pathExists(t.outPath)) {
+      const overwrite = await p.confirm({
+        message: `${path.relative(cwd, t.outPath)} already exists. Overwrite?`,
+        initialValue: false,
+      });
+      if (p.isCancel(overwrite)) {
+        p.cancel("Cancelled.");
+        return;
+      }
+      if (!overwrite) {
+        p.log.info(`Skipped: ${path.relative(cwd, t.outPath)}`);
+        continue;
+      }
+    }
+
+    const content = await renderGenerationTarget(t);
+    await fse.outputFile(t.outPath, content, "utf8");
+    p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
+  }
+
+  await writeNgxBaseConfig(cwd, config);
+
+  if (config.importStyle === "alias") {
+    await offerTsconfigPatch(cwd, config);
+  }
+
+  const noteBody = buildProviderNote(config, cwd);
+  const nextStepLines = [
+    "Configure providers in your application (adjust imports if needed):",
+    "",
+    pc.cyan(noteBody),
+  ];
+  if (config.useHttpResource) {
+    nextStepLines.push(
+      "",
+      pc.yellow(
+        "httpResource é experimental: https://angular.dev/guide/signals/resource"
+      )
+    );
+  }
+
+  p.note(nextStepLines.join("\n"), "Next step");
+
+  p.outro(pc.green("ngx-base-cli init finished."));
+}
+
+async function runInteractivePrompts(
+  cwd: string,
+  deps: Record<string, string>,
+  httpResourceSupported: boolean,
+  angularVersion: string | null
+): Promise<NgxBaseCliConfig | null> {
   const apiUrl = await p.text({
     message: "BASE_API_URL value (for the provider)",
     initialValue: "https://api.example.com",
@@ -56,7 +151,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(apiUrl)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   const outputDir = await p.text({
@@ -73,7 +168,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(outputDir)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   const importStyle = await p.select<"alias" | "relative">({
@@ -92,7 +187,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(importStyle)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   let useHttpResource = false;
@@ -103,13 +198,12 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
       )
     );
     const useHttpResourceAnswer = await p.confirm({
-      message:
-        "Use httpResource for the GET method? (experimental API)",
+      message: "Use httpResource for the GET method? (experimental API)",
       initialValue: true,
     });
     if (p.isCancel(useHttpResourceAnswer)) {
       p.cancel("Cancelled.");
-      return;
+      return null;
     }
     useHttpResource = Boolean(useHttpResourceAnswer);
   } else if (deps["@angular/core"]) {
@@ -142,7 +236,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(storageEngine)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   const generateAuthInterceptor = await p.confirm({
@@ -151,15 +245,14 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(generateAuthInterceptor)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   let authTokenName = "AUTH_TOKEN";
   let authTokenImportPath = "@core/tokens";
   if (generateAuthInterceptor) {
     const tokenName = await p.text({
-      message:
-        "Exported InjectionToken<string> name (e.g. AUTH_TOKEN)",
+      message: "Exported InjectionToken<string> name (e.g. AUTH_TOKEN)",
       initialValue: "AUTH_TOKEN",
       validate: (v) => {
         const s = String(v).trim();
@@ -170,7 +263,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     });
     if (p.isCancel(tokenName)) {
       p.cancel("Cancelled.");
-      return;
+      return null;
     }
     authTokenName = String(tokenName).trim();
 
@@ -182,7 +275,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     });
     if (p.isCancel(tokenImport)) {
       p.cancel("Cancelled.");
-      return;
+      return null;
     }
     authTokenImportPath = String(tokenImport).trim();
   }
@@ -194,7 +287,16 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(generateErrorInterceptor)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
+  }
+
+  const generateLoggingInterceptor = await p.confirm({
+    message: "Generate LoggingInterceptor (logs requests in devMode only)?",
+    initialValue: false,
+  });
+  if (p.isCancel(generateLoggingInterceptor)) {
+    p.cancel("Cancelled.");
+    return null;
   }
 
   const generateBarrel = await p.confirm({
@@ -203,7 +305,7 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(generateBarrel)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
   const generateProjectStructure = await p.confirm({
@@ -213,10 +315,10 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
   });
   if (p.isCancel(generateProjectStructure)) {
     p.cancel("Cancelled.");
-    return;
+    return null;
   }
 
-  const config: NgxBaseCliConfig = {
+  return {
     outputDir: String(outputDir).trim().replace(/[/\\]+$/, ""),
     baseApiUrl: String(apiUrl).trim(),
     importStyle,
@@ -226,61 +328,88 @@ export async function runInit(cwd: string = process.cwd()): Promise<void> {
     authTokenName,
     authTokenImportPath,
     generateErrorInterceptor,
+    generateLoggingInterceptor,
     generateBarrel,
     generateProjectStructure,
   };
+}
 
-  const targets = buildGenerationTargets(cwd, config);
+async function offerTsconfigPatch(
+  cwd: string,
+  config: NgxBaseCliConfig
+): Promise<void> {
+  const tsconfigPath = path.join(cwd, "tsconfig.json");
+  if (!(await fse.pathExists(tsconfigPath))) return;
 
-  for (const t of targets) {
-    await fse.mkdir(path.dirname(t.outPath), { recursive: true });
+  const patchAlias = await p.confirm({
+    message:
+      "Add path aliases (@core/*, @layout/*, @pages/*, @shared/*) to tsconfig.json?",
+    initialValue: true,
+  });
+  if (p.isCancel(patchAlias) || !patchAlias) return;
 
-    if (await fse.pathExists(t.outPath)) {
-      const overwrite = await p.confirm({
-        message: `${path.relative(cwd, t.outPath)} already exists. Overwrite?`,
-        initialValue: false,
-      });
-      if (p.isCancel(overwrite)) {
-        p.cancel("Cancelled.");
-        return;
-      }
-      if (!overwrite) {
-        p.log.info(`Skipped: ${path.relative(cwd, t.outPath)}`);
-        continue;
-      }
+  const raw = await fse.readFile(tsconfigPath, "utf8");
+  let tsconfig: {
+    compilerOptions?: { paths?: Record<string, string[]>; baseUrl?: string };
+  };
+  try {
+    tsconfig = JSON.parse(raw) as typeof tsconfig;
+  } catch {
+    p.log.warn(pc.yellow("Could not parse tsconfig.json — skipping patch."));
+    return;
+  }
+
+  if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
+  if (!tsconfig.compilerOptions.paths) tsconfig.compilerOptions.paths = {};
+  if (!tsconfig.compilerOptions.baseUrl) {
+    tsconfig.compilerOptions.baseUrl = "./";
+  }
+
+  const outDirSrc = config.outputDir; // e.g. src/app/core
+  const appDir = "src/app";
+
+  const newAliases: Record<string, string[]> = {
+    "@core/*": [`${outDirSrc}/*`],
+    "@layout/*": [`${appDir}/layout/*`],
+    "@pages/*": [`${appDir}/pages/*`],
+    "@shared/*": [`${appDir}/shared/*`],
+  };
+
+  let added = 0;
+  for (const [alias, targets] of Object.entries(newAliases)) {
+    if (!tsconfig.compilerOptions.paths[alias]) {
+      tsconfig.compilerOptions.paths[alias] = targets;
+      added++;
     }
-
-    const content = await renderGenerationTarget(t);
-    await fse.outputFile(t.outPath, content, "utf8");
-    p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
   }
 
-  await writeNgxBaseConfig(cwd, config);
-
-  const noteBody = buildProviderNote(config, cwd);
-  const nextStepLines = [
-    "Configure providers in your application (adjust imports if needed):",
-    "",
-    pc.cyan(noteBody),
-  ];
-  if (useHttpResource) {
-    nextStepLines.push(
-      "",
-      pc.yellow(
-        "httpResource é experimental: https://angular.dev/guide/signals/resource"
-      )
-    );
+  if (added === 0) {
+    p.log.info("All aliases already present in tsconfig.json — nothing to do.");
+    return;
   }
 
-  p.note(nextStepLines.join("\n"), "Next step");
+  const newContent = JSON.stringify(tsconfig, null, 2) + "\n";
 
-  p.outro(pc.green("ngx-base-cli init finished."));
+  p.log.info(pc.dim("Diff preview:"));
+  const addedAliases = Object.keys(newAliases).filter(
+    (a) => !JSON.parse(raw).compilerOptions?.paths?.[a]
+  );
+  for (const a of addedAliases) {
+    p.log.info(pc.green(`  + "${a}": ${JSON.stringify(newAliases[a])}`));
+  }
+
+  await fse.outputFile(tsconfigPath, newContent, "utf8");
+  p.log.success(
+    pc.green(`tsconfig.json updated (${added} alias${added > 1 ? "es" : ""} added).`)
+  );
 }
 
 function buildProviderNote(config: NgxBaseCliConfig, cwd: string): string {
   const lines: string[] = [];
   const needInterceptors =
-    config.generateAuthInterceptor || config.generateErrorInterceptor;
+    config.generateAuthInterceptor ||
+    config.generateErrorInterceptor ||
+    config.generateLoggingInterceptor;
 
   lines.push(
     `import { provideHttpClient${needInterceptors ? ", withInterceptors" : ""} } from '@angular/common/http';`
@@ -306,6 +435,13 @@ function buildProviderNote(config: NgxBaseCliConfig, cwd: string): string {
     );
     lines.push(`import { errorInterceptor } from '${ip}';`);
   }
+  if (config.generateLoggingInterceptor) {
+    const ip = importFromSrcApp(
+      cwd,
+      path.join(cwd, config.outputDir, "interceptors/logging.interceptor.ts")
+    );
+    lines.push(`import { loggingInterceptor } from '${ip}';`);
+  }
 
   lines.push("");
   lines.push("// providers: [");
@@ -314,6 +450,8 @@ function buildProviderNote(config: NgxBaseCliConfig, cwd: string): string {
   if (config.generateAuthInterceptor) interceptorNames.push("authInterceptor");
   if (config.generateErrorInterceptor)
     interceptorNames.push("errorInterceptor");
+  if (config.generateLoggingInterceptor)
+    interceptorNames.push("loggingInterceptor");
 
   if (interceptorNames.length > 0) {
     lines.push(

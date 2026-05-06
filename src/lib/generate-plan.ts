@@ -110,12 +110,24 @@ export function buildGenerationTargets(
     });
   }
 
+  if (config.generateLoggingInterceptor) {
+    targets.push({
+      outPath: path.join(interceptorsDir, "logging.interceptor.ts"),
+      template: "logging.interceptor.ts.tpl",
+      vars: {},
+    });
+  }
+
   if (config.generateProjectStructure) {
     const coreDir = path.join(cwd, outputDir);
     const appDir = path.join(cwd, "src/app");
 
     const coreEmptyDirs = ["directives", "enum", "guards", "pipes", "utils"];
-    if (!config.generateAuthInterceptor && !config.generateErrorInterceptor) {
+    if (
+      !config.generateAuthInterceptor &&
+      !config.generateErrorInterceptor &&
+      !config.generateLoggingInterceptor
+    ) {
       coreEmptyDirs.push("interceptors");
     }
     for (const dir of coreEmptyDirs) {

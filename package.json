@@ -1,6 +1,6 @@
 {
   "name": "ngx-base-cli",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "CLI to scaffold BaseService and CacheService in Angular projects (shadcn/ui style)",
   "license": "MIT",
   "author": "",

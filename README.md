@@ -222,18 +222,18 @@ There are also `post`, `put`, `patch`, `delete` with `HttpClient` and `take(1)` 
 
 ## `add` command — feature service
 
-Generates `src/app/features/<kebab-name>/<kebab-name>.service.ts` extending `BaseService`. Requires `.ngx-base-cli.json` and `base.service.ts` in the configured `outputDir`.
+Generates `<outputDir>/services/<kebab-name>.service.ts` extending `BaseService`. With the default `outputDir` of `src/app/core`, the file lands at **`src/app/core/services/user.service.ts`**. Requires `.ngx-base-cli.json` and `base.service.ts` in the configured `outputDir`.
 
 ```bash
 npx ngx-base-cli add user
 npx ngx-base-cli add product-catalog
 ```
 
-Example generated file (relative imports computed by the CLI):
+Example generated file (`outputDir = src/app/core`):
 
 ```typescript
 import { Injectable } from '@angular/core';
-import { BaseService } from '../../../core/services/base.service';
+import { BaseService } from './base.service';
 
 @Injectable({ providedIn: 'root' })
 export class UserService extends BaseService {}
@@ -244,7 +244,7 @@ export class UserService extends BaseService {}
 ```typescript
 import { Component, inject } from '@angular/core';
 import { HttpParams } from '@angular/common/http';
-import { UserService } from '../features/user/user.service';
+import { UserService } from '@core/services/user.service';
 
 @Component({
   selector: 'app-user-list',
@@ -264,6 +264,10 @@ export class UserListComponent {
       minutesToExpire: 5,
     });
   }
+
+  refreshUsers(): void {
+    this.userService.invalidateCache('/users');
+  }
 }
 ```
 
@@ -276,6 +280,43 @@ Useful after upgrading **ngx-base-cli** or when you want generated code to match
 ```bash
 npx ngx-base-cli update
 ```
+
+## `list` command
+
+Shows the sync status of every file that `init` would generate, without touching disk.
+
+```bash
+npx ngx-base-cli list
+```
+
+Output example:
+
+```
+✅  src/app/core/interfaces/cache.interface.ts     present, in sync
+✅  src/app/core/services/cache.service.ts         present, in sync
+⚠️   src/app/core/services/base.service.ts          present, diverges from template
+❌  src/app/core/interceptors/auth.interceptor.ts  absent
+```
+
+Useful to audit the project state before running `update`.
+
+## `--yes` flag (init)
+
+Skip the full interactive wizard and pick a preset instead:
+
+```bash
+npx ngx-base-cli init --yes
+# or
+npx ngx-base-cli init -y
+```
+
+You are asked a **single question** — which preset to apply — and then the wizard runs without further prompts:
+
+| Preset | Description |
+|--------|-------------|
+| `minimal` | cache + base service only, localStorage, no interceptors |
+| `standard` | cache + base service + auth interceptor + error interceptor + barrel |
+| `full` | standard + base folder structure (layout, pages, routes, shared) |
 
 ## `--cwd` option
 
@@ -542,18 +583,18 @@ Há também `post`, `put`, `patch`, `delete` com `HttpClient` e `take(1)` onde a
 
 ## Comando `add` — serviço de feature
 
-Gera `src/app/features/<nome-kebab>/<nome-kebab>.service.ts` a estender `BaseService`. Exige `.ngx-base-cli.json` e `base.service.ts` no `outputDir` configurado.
+Gera `<outputDir>/services/<nome-kebab>.service.ts` a estender `BaseService`. Com o `outputDir` predefinido `src/app/core`, o ficheiro fica em **`src/app/core/services/user.service.ts`**. Exige `.ngx-base-cli.json` e `base.service.ts` no `outputDir` configurado.
 
 ```bash
 npx ngx-base-cli add user
 npx ngx-base-cli add product-catalog
 ```
 
-Exemplo de ficheiro gerado (imports relativos calculados pelo CLI):
+Exemplo de ficheiro gerado (`outputDir = src/app/core`):
 
 ```typescript
 import { Injectable } from '@angular/core';
-import { BaseService } from '../../../core/services/base.service';
+import { BaseService } from './base.service';
 
 @Injectable({ providedIn: 'root' })
 export class UserService extends BaseService {}
@@ -564,7 +605,7 @@ export class UserService extends BaseService {}
 ```typescript
 import { Component, inject } from '@angular/core';
 import { HttpParams } from '@angular/common/http';
-import { UserService } from '../features/user/user.service';
+import { UserService } from '@core/services/user.service';
 
 @Component({
   selector: 'app-user-list',
@@ -584,6 +625,10 @@ export class UserListComponent {
       minutesToExpire: 5,
     });
   }
+
+  refreshUsers(): void {
+    this.userService.invalidateCache('/users');
+  }
 }
 ```
 
@@ -596,6 +641,43 @@ Regenera os ficheiros do **`init`** com base em **`.ngx-base-cli.json`**, compar
 ```bash
 npx ngx-base-cli update
 ```
+
+## Comando `list`
+
+Mostra o estado de sincronização de cada ficheiro que o `init` geraria, sem tocar no disco.
+
+```bash
+npx ngx-base-cli list
+```
+
+Exemplo de saída:
+
+```
+✅  src/app/core/interfaces/cache.interface.ts     presente, em sync
+✅  src/app/core/services/cache.service.ts         presente, em sync
+⚠️   src/app/core/services/base.service.ts          presente, diverge do template
+❌  src/app/core/interceptors/auth.interceptor.ts  ausente
+```
+
+Útil para auditar o estado do projeto antes de correr `update`.
+
+## Flag `--yes` (init)
+
+Salta o wizard interativo completo e escolhe um preset:
+
+```bash
+npx ngx-base-cli init --yes
+# ou
+npx ngx-base-cli init -y
+```
+
+É feita **uma única pergunta** — qual preset aplicar — e o wizard corre sem mais interações:
+
+| Preset | Descrição |
+|--------|-----------|
+| `minimal` | cache + base service apenas, localStorage, sem interceptors |
+| `standard` | cache + base service + auth interceptor + error interceptor + barrel |
+| `full` | standard + estrutura base de pastas (layout, pages, routes, shared) |
 
 ## Opção `--cwd`
 
