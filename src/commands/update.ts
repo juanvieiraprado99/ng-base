@@ -4,7 +4,12 @@ import fse from "fs-extra";
 import path from "node:path";
 import pc from "picocolors";
 import { readNgxBaseConfig } from "../lib/config.js";
-import { buildGenerationTargets } from "../lib/generate-plan.js";
+import {
+  buildGenerationTargets,
+  type GenerationTarget,
+} from "../lib/generate-plan.js";
+import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
+import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
 import { renderGenerationTarget } from "../lib/render-target.js";
 
 function formatDiff(oldContent: string, newContent: string): string {
@@ -25,7 +30,17 @@ function formatDiff(oldContent: string, newContent: string): string {
   return out.trimEnd();
 }
 
-export async function runUpdate(cwd: string = process.cwd()): Promise<void> {
+type PendingChange = {
+  target: GenerationTarget;
+  rel: string;
+  oldContent: string;
+  newContent: string;
+};
+
+export async function runUpdate(
+  cwd: string = process.cwd(),
+  yes = false
+): Promise<void> {
   p.intro(pc.inverse(" ngx-base-cli update "));
 
   const config = await readNgxBaseConfig(cwd);
@@ -40,6 +55,7 @@ export async function runUpdate(cwd: string = process.cwd()): Promise<void> {
   }
 
   const targets = buildGenerationTargets(cwd, config);
+  const pending: PendingChange[] = [];
 
   for (const t of targets) {
     const rel = path.relative(cwd, t.outPath);
@@ -58,25 +74,52 @@ export async function runUpdate(cwd: string = process.cwd()): Promise<void> {
       continue;
     }
 
-    p.log.message(pc.bold(`Diff: ${rel}`));
-    console.log(formatDiff(oldContent, newContent));
-    console.log("");
-
-    const apply = await p.confirm({
-      message: `Overwrite ${rel}?`,
-      initialValue: true,
-    });
-    if (p.isCancel(apply)) {
-      p.cancel("Cancelled.");
-      return;
-    }
-    if (!apply) {
-      p.log.info(`Kept: ${rel}`);
+    if (yes) {
+      await fse.outputFile(t.outPath, newContent, "utf8");
+      p.log.success(pc.green(`Updated: ${rel}`));
       continue;
     }
 
-    await fse.outputFile(t.outPath, newContent, "utf8");
-    p.log.success(pc.green(`Updated: ${rel}`));
+    pending.push({ target: t, rel, oldContent, newContent });
+  }
+
+  if (pending.length > 0) {
+    for (const { rel, oldContent, newContent } of pending) {
+      p.log.message(pc.bold(`Diff: ${rel}`));
+      console.log(formatDiff(oldContent, newContent));
+      console.log("");
+    }
+
+    const applyAll = await p.confirm({
+      message: `Overwrite all ${pending.length} modified file(s)?`,
+      initialValue: true,
+    });
+    if (p.isCancel(applyAll)) {
+      p.cancel("Cancelled.");
+      return;
+    }
+    if (!applyAll) {
+      for (const { rel } of pending) {
+        p.log.info(`Kept: ${rel}`);
+      }
+    } else {
+      for (const { target: t, rel, newContent } of pending) {
+        await fse.outputFile(t.outPath, newContent, "utf8");
+        p.log.success(pc.green(`Updated: ${rel}`));
+      }
+    }
+  }
+
+  if (await fse.pathExists(path.join(cwd, "angular.json"))) {
+    await patchAngularJsonFileReplacements(cwd);
+  }
+  const appCfgResult = await patchAppConfigForHttp(cwd, config);
+  if (appCfgResult.withInterceptorsAlreadyPresent) {
+    p.log.warn(
+      pc.yellow(
+        "app.config.ts already contains withInterceptors(...). ngx-base-cli will not merge interceptor lists automatically; add the generated interceptors to your withInterceptors([...]) manually."
+      )
+    );
   }
 
   p.outro(pc.green("ngx-base-cli update finished."));

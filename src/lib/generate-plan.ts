@@ -21,6 +21,19 @@ function cacheTemplateForEngine(engine: StorageEngine): string {
   }
 }
 
+function buildEnvironmentTsContent(
+  production: boolean,
+  baseApiUrl: string
+): string {
+  return [
+    "export const environment = {",
+    `  production: ${production},`,
+    `  baseApiUrl: ${JSON.stringify(baseApiUrl)},`,
+    "} as const;",
+    "",
+  ].join("\n");
+}
+
 function buildBarrelContent(): string {
   const lines = [
     "export * from './cache.service';",
@@ -51,6 +64,22 @@ export function buildGenerationTargets(
   const interfacesDir = path.join(cwd, outputDir, "interfaces");
   const servicesDir = path.join(cwd, outputDir, "services");
   const interceptorsDir = path.join(cwd, outputDir, "interceptors");
+  const environmentsDir = path.join(cwd, "src/environments");
+
+  const envTargets: GenerationTarget[] = [
+    {
+      outPath: path.join(environmentsDir, "environment.ts"),
+      template: "",
+      vars: {},
+      rawContent: buildEnvironmentTsContent(false, config.baseApiUrl),
+    },
+    {
+      outPath: path.join(environmentsDir, "environment.prod.ts"),
+      template: "",
+      vars: {},
+      rawContent: buildEnvironmentTsContent(true, config.baseApiUrl),
+    },
+  ];
 
   const importCacheInterface =
     config.importStyle === "alias"
@@ -67,7 +96,9 @@ export function buildGenerationTargets(
     ? "base.service.httpresource.ts.tpl"
     : "base.service.ts.tpl";
 
-  const targets: GenerationTarget[] = [
+  const targets: GenerationTarget[] = [...envTargets];
+
+  targets.push(
     {
       outPath: path.join(interfacesDir, "cache.interface.ts"),
       template: "cache.interface.ts.tpl",
@@ -82,8 +113,8 @@ export function buildGenerationTargets(
       outPath: path.join(servicesDir, "base.service.ts"),
       template: baseTemplate,
       vars,
-    },
-  ];
+    }
+  );
 
   if (config.generateBarrel) {
     targets.push({
@@ -236,6 +267,12 @@ export function buildGenerationTargets(
         template: "",
         vars: {},
         rawContent: "",
+      },
+      {
+        outPath: path.join(appDir, "app.html"),
+        template: "",
+        vars: {},
+        rawContent: "<router-outlet />\n",
       }
     );
   }

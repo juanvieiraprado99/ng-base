@@ -31,7 +31,7 @@ program
 program
   .command("add")
   .description(
-    "Generate a feature service extending BaseService under src/app/features/<name>/"
+    "Generate a feature service extending BaseService under <outputDir>/services/"
   )
   .argument("<name>", "feature name (e.g. user, user-profile)")
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
@@ -45,8 +45,9 @@ program
     "Regenerate init-generated files from .ngx-base-cli.json (shows diff)"
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action(async (opts: { cwd?: string }) => {
-    await runUpdate(opts.cwd ?? process.cwd());
+  .option("-y, --yes", "Apply all updates without prompts")
+  .action(async (opts: { cwd?: string; yes?: boolean }) => {
+    await runUpdate(opts.cwd ?? process.cwd(), opts.yes ?? false);
   });
 
 program

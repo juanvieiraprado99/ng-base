@@ -10,12 +10,35 @@ import type { NgxBaseCliConfig, StorageEngine } from "../lib/config.js";
 import { writeNgxBaseConfig } from "../lib/config.js";
 import { buildGenerationTargets } from "../lib/generate-plan.js";
 import { importFromSrcApp } from "../lib/import-paths.js";
+import { parseJsonWithComments } from "../lib/parse-jsonc.js";
+import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
+import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
 import {
   PRESET_DESCRIPTIONS,
   PRESETS,
   type PresetName,
 } from "../lib/presets.js";
 import { renderGenerationTarget } from "../lib/render-target.js";
+
+async function promptPresetSelection(): Promise<NgxBaseCliConfig | null> {
+  const presetName = await p.select<PresetName>({
+    message: "Which preset would you like to use?",
+    options: (Object.keys(PRESETS) as PresetName[]).map((key) => ({
+      value: key,
+      label: key,
+      hint: PRESET_DESCRIPTIONS[key],
+    })),
+    initialValue: "minimal" as PresetName,
+  });
+  if (p.isCancel(presetName)) {
+    p.cancel("Cancelled.");
+    return null;
+  }
+  p.log.success(
+    pc.green(`Using preset "${presetName}": ${PRESET_DESCRIPTIONS[presetName]}`)
+  );
+  return { ...PRESETS[presetName] };
+}
 
 export async function runInit(
   cwd: string = process.cwd(),
@@ -56,47 +79,68 @@ export async function runInit(
   let config: NgxBaseCliConfig | null = null;
 
   if (yes) {
-    const presetName = await p.select<PresetName>({
-      message: "Which preset would you like to use?",
-      options: (
-        Object.keys(PRESETS) as PresetName[]
-      ).map((key) => ({
-        value: key,
-        label: key,
-        hint: PRESET_DESCRIPTIONS[key],
-      })),
-      initialValue: "standard" as PresetName,
+    config = await promptPresetSelection();
+  } else {
+    const setupMode = await p.select<"preset" | "custom">({
+      message: "How would you like to set up ngx-base?",
+      options: [
+        {
+          value: "preset",
+          label: "Quick — choose a preset",
+          hint: "Recommended (same as ngx-base-cli init --yes)",
+        },
+        {
+          value: "custom",
+          label: "Custom — step-by-step wizard",
+          hint: "Fine-grained options",
+        },
+      ],
+      initialValue: "preset",
     });
-    if (p.isCancel(presetName)) {
+    if (p.isCancel(setupMode)) {
       p.cancel("Cancelled.");
       return;
     }
-    config = { ...PRESETS[presetName] };
-    p.log.success(
-      pc.green(`Using preset "${presetName}": ${PRESET_DESCRIPTIONS[presetName]}`)
-    );
-  } else {
-    config = await runInteractivePrompts(cwd, deps, httpResourceSupported, angularVersion);
+    config =
+      setupMode === "preset"
+        ? await promptPresetSelection()
+        : await runInteractivePrompts(
+            cwd,
+            deps,
+            httpResourceSupported,
+            angularVersion
+          );
   }
 
   if (!config) return;
 
   const targets = buildGenerationTargets(cwd, config);
 
+  const existingChecks = await Promise.all(
+    targets.map((t) => fse.pathExists(t.outPath))
+  );
+  const anyExisting = existingChecks.some(Boolean);
+
+  let overwriteAll = false;
+  if (anyExisting) {
+    const overwriteAnswer = await p.confirm({
+      message: "Some files already exist. Overwrite all existing files?",
+      initialValue: false,
+    });
+    if (p.isCancel(overwriteAnswer)) {
+      p.cancel("Cancelled.");
+      return;
+    }
+    overwriteAll = overwriteAnswer;
+  }
+
+  let skippedExistingCount = 0;
   for (const t of targets) {
     await fse.mkdir(path.dirname(t.outPath), { recursive: true });
 
     if (await fse.pathExists(t.outPath)) {
-      const overwrite = await p.confirm({
-        message: `${path.relative(cwd, t.outPath)} already exists. Overwrite?`,
-        initialValue: false,
-      });
-      if (p.isCancel(overwrite)) {
-        p.cancel("Cancelled.");
-        return;
-      }
-      if (!overwrite) {
-        p.log.info(`Skipped: ${path.relative(cwd, t.outPath)}`);
+      if (!overwriteAll) {
+        skippedExistingCount++;
         continue;
       }
     }
@@ -105,19 +149,80 @@ export async function runInit(
     await fse.outputFile(t.outPath, content, "utf8");
     p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
   }
+  if (skippedExistingCount > 0) {
+    p.log.info(
+      pc.dim(
+        `Skipped ${skippedExistingCount} existing file(s) (overwrite declined).`
+      )
+    );
+  }
 
   await writeNgxBaseConfig(cwd, config);
+
+  const angularJsonPath = path.join(cwd, "angular.json");
+  if (await fse.pathExists(angularJsonPath)) {
+    const angularResult = await patchAngularJsonFileReplacements(cwd);
+    if (!angularResult.ok) {
+      p.log.warn(
+        pc.yellow(
+          "Could not update angular.json (parse error or no application build target). Add fileReplacements for environments manually."
+        )
+      );
+    } else if (angularResult.mutated) {
+      p.log.success(
+        pc.green(
+          `OK: ${path.relative(cwd, angularJsonPath)} (production fileReplacements)`
+        )
+      );
+    }
+  }
 
   if (config.importStyle === "alias") {
     await offerTsconfigPatch(cwd, config);
   }
 
-  const noteBody = buildProviderNote(config, cwd);
-  const nextStepLines = [
-    "Configure providers in your application (adjust imports if needed):",
-    "",
-    pc.cyan(noteBody),
-  ];
+  const appCfgResult = await patchAppConfigForHttp(cwd, config);
+  if (appCfgResult.withInterceptorsAlreadyPresent) {
+    p.log.warn(
+      pc.yellow(
+        "app.config.ts already contains withInterceptors(...). ngx-base-cli will not merge interceptor lists automatically; add the generated interceptors to your withInterceptors([...]) manually."
+      )
+    );
+  }
+  let noteBody: string;
+  if (appCfgResult.patched) {
+    noteBody =
+      "Updated src/app/app.config.ts with environment.baseApiUrl" +
+      (config.generateAuthInterceptor ||
+      config.generateErrorInterceptor ||
+      config.generateLoggingInterceptor
+        ? ", provideHttpClient(withInterceptors(...))"
+        : "") +
+      ", and BASE_API_URL.";
+    if (
+      config.generateProjectStructure &&
+      (await fse.pathExists(path.join(cwd, "src/app/app.html")))
+    ) {
+      noteBody +=
+        " Ensure RootComponent/template imports RouterOutlet if app.html uses <router-outlet />.";
+    }
+  } else {
+    noteBody = buildProviderNote(config, cwd);
+    if (!appCfgResult.appConfigExists) {
+      noteBody =
+        `No src/app/app.config.ts found — add bootstrap config manually:\n\n` +
+        noteBody;
+    }
+  }
+
+  const nextStepLines =
+    appCfgResult.patched
+      ? ["Next:", "", pc.cyan(noteBody)]
+      : [
+          "Configure providers in your application (adjust imports if needed):",
+          "",
+          pc.cyan(noteBody),
+        ];
   if (config.useHttpResource) {
     nextStepLines.push(
       "",
@@ -239,14 +344,38 @@ async function runInteractivePrompts(
     return null;
   }
 
-  const generateAuthInterceptor = await p.confirm({
-    message: "Generate AuthInterceptor (Bearer token)?",
-    initialValue: false,
+  const interceptorChoices = await p.multiselect<"auth" | "error" | "logging">({
+    message:
+      "HTTP interceptors to generate (space to toggle, enter when done)",
+    options: [
+      {
+        value: "auth",
+        label: "AuthInterceptor",
+        hint: "Bearer token",
+      },
+      {
+        value: "error",
+        label: "ErrorInterceptor",
+        hint: "401→/login, 403→/forbidden, 5xx→Subject",
+      },
+      {
+        value: "logging",
+        label: "LoggingInterceptor",
+        hint: "Logs requests in devMode only",
+      },
+    ],
+    required: false,
+    initialValues: [],
   });
-  if (p.isCancel(generateAuthInterceptor)) {
+  if (p.isCancel(interceptorChoices)) {
     p.cancel("Cancelled.");
     return null;
   }
+
+  const generateAuthInterceptor = interceptorChoices.includes("auth");
+  const generateErrorInterceptor = interceptorChoices.includes("error");
+  const generateLoggingInterceptor =
+    interceptorChoices.includes("logging");
 
   let authTokenName = "AUTH_TOKEN";
   let authTokenImportPath = "@core/tokens";
@@ -278,25 +407,6 @@ async function runInteractivePrompts(
       return null;
     }
     authTokenImportPath = String(tokenImport).trim();
-  }
-
-  const generateErrorInterceptor = await p.confirm({
-    message:
-      "Generate ErrorInterceptor (401→/login, 403→/forbidden, 5xx→Subject)?",
-    initialValue: false,
-  });
-  if (p.isCancel(generateErrorInterceptor)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
-
-  const generateLoggingInterceptor = await p.confirm({
-    message: "Generate LoggingInterceptor (logs requests in devMode only)?",
-    initialValue: false,
-  });
-  if (p.isCancel(generateLoggingInterceptor)) {
-    p.cancel("Cancelled.");
-    return null;
   }
 
   const generateBarrel = await p.confirm({
@@ -353,7 +463,7 @@ async function offerTsconfigPatch(
     compilerOptions?: { paths?: Record<string, string[]>; baseUrl?: string };
   };
   try {
-    tsconfig = JSON.parse(raw) as typeof tsconfig;
+    tsconfig = parseJsonWithComments(raw) as typeof tsconfig;
   } catch {
     p.log.warn(pc.yellow("Could not parse tsconfig.json — skipping patch."));
     return;
@@ -375,15 +485,15 @@ async function offerTsconfigPatch(
     "@shared/*": [`${appDir}/shared/*`],
   };
 
-  let added = 0;
+  const addedAliases: string[] = [];
   for (const [alias, targets] of Object.entries(newAliases)) {
     if (!tsconfig.compilerOptions.paths[alias]) {
       tsconfig.compilerOptions.paths[alias] = targets;
-      added++;
+      addedAliases.push(alias);
     }
   }
 
-  if (added === 0) {
+  if (addedAliases.length === 0) {
     p.log.info("All aliases already present in tsconfig.json — nothing to do.");
     return;
   }
@@ -391,16 +501,15 @@ async function offerTsconfigPatch(
   const newContent = JSON.stringify(tsconfig, null, 2) + "\n";
 
   p.log.info(pc.dim("Diff preview:"));
-  const addedAliases = Object.keys(newAliases).filter(
-    (a) => !JSON.parse(raw).compilerOptions?.paths?.[a]
-  );
   for (const a of addedAliases) {
     p.log.info(pc.green(`  + "${a}": ${JSON.stringify(newAliases[a])}`));
   }
 
   await fse.outputFile(tsconfigPath, newContent, "utf8");
   p.log.success(
-    pc.green(`tsconfig.json updated (${added} alias${added > 1 ? "es" : ""} added).`)
+    pc.green(
+      `tsconfig.json updated (${addedAliases.length} alias${addedAliases.length > 1 ? "es" : ""} added).`
+    )
   );
 }
 
@@ -411,6 +520,9 @@ function buildProviderNote(config: NgxBaseCliConfig, cwd: string): string {
     config.generateErrorInterceptor ||
     config.generateLoggingInterceptor;
 
+  lines.push(
+    `import { environment } from '../environments/environment';`
+  );
   lines.push(
     `import { provideHttpClient${needInterceptors ? ", withInterceptors" : ""} } from '@angular/common/http';`
   );
@@ -461,9 +573,7 @@ function buildProviderNote(config: NgxBaseCliConfig, cwd: string): string {
     lines.push(`  provideHttpClient(),`);
   }
 
-  lines.push(
-    `  { provide: BASE_API_URL, useValue: '${config.baseApiUrl}' },`
-  );
+  lines.push(`  { provide: BASE_API_URL, useValue: environment.baseApiUrl },`);
   lines.push("// ],");
 
   return lines.join("\n");

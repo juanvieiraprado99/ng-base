@@ -14,6 +14,7 @@ CLI to scaffold `BaseService`, `CacheService`, cache models, and (optionally) HT
 
 - **Node.js** ≥ 18
 - An **Angular** project with `package.json` at the root (where you run the command)
+- If `@angular/core` is not found in `package.json`, the CLI will ask whether you want to continue anyway.
 - For the **`httpResource`** option on `GET`: Angular **19.1+** (`httpResource` is experimental; see the [documentation](https://angular.dev/guide/signals/resource))
 
 ## Quick install
@@ -36,13 +37,14 @@ The flow is **interactive**. When finished, **`.ngx-base-cli.json`** is created 
 
 | Prompt | Default / notes |
 |--------|-----------------|
+| Setup mode | **Quick (preset)** (recommended) or **Custom (step-by-step wizard)** |
 | `BASE_API_URL` | `https://api.example.com` (must start with `http://` or `https://`) |
 | Output directory | `src/app/core` (**relative** path from the project root) |
 | `cache.interface` imports | **Alias** (`@core/interfaces/...`) or **relative** (`../interfaces/...`) |
 | `httpResource` on `GET` | Only if Angular ≥ **19.1**; default **yes** when available (experimental API) |
 | `CacheService` engine | `localStorage` (default), `sessionStorage`, or `memory` (e.g. SSR) |
-| `AuthInterceptor` (Bearer) | Default **no**; if yes: token name (e.g. `AUTH_TOKEN`) and import path (e.g. `@core/tokens`) |
-| `ErrorInterceptor` (401/403/5xx) | Default **no** |
+| HTTP interceptors | Multi-select: `AuthInterceptor` (Bearer), `ErrorInterceptor` (401/403/5xx), `LoggingInterceptor` (dev-only logging) |
+| Auth token (if `AuthInterceptor`) | Token name (e.g. `AUTH_TOKEN`) and import path (e.g. `@core/tokens`) |
 | Barrel `services/index.ts` | Default **yes** |
 | Base folder structure | Default **no**; generates `layout/`, `pages/`, `routes/`, `shared/` under `src/app` and subfolders under `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`) |
 | Existing files | Asks whether to **overwrite** (default **no**) |
@@ -61,7 +63,11 @@ src/app/core/
 │   └── index.ts              # if barrel was generated
 └── interceptors/               # optional
     ├── auth.interceptor.ts
-    └── error.interceptor.ts
+    ├── error.interceptor.ts
+    └── logging.interceptor.ts
+src/environments/
+├── environment.ts
+└── environment.prod.ts
 ```
 
 ### Extra structure with **Base folder structure** enabled
@@ -123,28 +129,43 @@ In `tsconfig.json` (and `tsconfig.app.json` if applicable):
 
 Adjust the path if your `outputDir` differs from `src/app/core`. The `@layout/*`, `@pages/*`, and `@shared/*` aliases are used by generated files when **Base folder structure** is enabled.
 
-### 2. HTTP providers and `BASE_API_URL`
+> Note: when you accept the CLI option to patch `tsconfig.json`, it rewrites the file as JSON and may remove comments.
+
+### 2. Environments and `angular.json` (production file replacements)
+
+`init` generates:
+
+- `src/environments/environment.ts`
+- `src/environments/environment.prod.ts`
+
+If `angular.json` exists, `init` also tries to ensure your production build replaces `environment.ts` with `environment.prod.ts` via `fileReplacements` (idempotent patch).
+
+### 3. HTTP providers and `BASE_API_URL`
 
 The **`BASE_API_URL`** token is generated in **`cache.service.ts`** (not in `BaseService`). `init` shows an example with relative imports from `src/app`; alternatively:
 
 ```typescript
 import { ApplicationConfig } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { environment } from '../environments/environment';
 import { BASE_API_URL } from '@core/services/cache.service';
 import { authInterceptor } from '@core/interceptors/auth.interceptor';
 import { errorInterceptor } from '@core/interceptors/error.interceptor';
+import { loggingInterceptor } from '@core/interceptors/logging.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
-    { provide: BASE_API_URL, useValue: 'https://api.example.com' },
+    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor, loggingInterceptor])),
+    { provide: BASE_API_URL, useValue: environment.baseApiUrl },
   ],
 };
 ```
 
 If you **did not** generate interceptors, use only `provideHttpClient()` and the `BASE_API_URL` provider.
 
-### 3. Auth token (if you generated `AuthInterceptor`)
+`init` can also patch `src/app/app.config.ts` automatically (imports + `provideHttpClient(...)` + `{ provide: BASE_API_URL, useValue: environment.baseApiUrl }`). If your `app.config.ts` already contains `withInterceptors(...)`, the CLI will not merge interceptor lists automatically — you must add generated interceptors manually.
+
+### 4. Auth token (if you generated `AuthInterceptor`)
 
 Export an `InjectionToken<string>` at the path you specified (e.g. `@core/tokens`) and provide the value in `providers`:
 
@@ -281,6 +302,14 @@ Useful after upgrading **ngx-base-cli** or when you want generated code to match
 npx ngx-base-cli update
 ```
 
+Apply all updates without per-file prompts:
+
+```bash
+npx ngx-base-cli update --yes
+# or
+npx ngx-base-cli update -y
+```
+
 ## `list` command
 
 Shows the sync status of every file that `init` would generate, without touching disk.
@@ -343,6 +372,7 @@ File at the **Angular project root** (same level as `package.json`). Missing val
 | `authTokenName` | `string` | `"AUTH_TOKEN"` | Imported symbol name in the interceptor |
 | `authTokenImportPath` | `string` | `"@core/tokens"` | Import path for the token |
 | `generateErrorInterceptor` | `boolean` | `false` | Generates `interceptors/error.interceptor.ts` |
+| `generateLoggingInterceptor` | `boolean` | `false` | Generates `interceptors/logging.interceptor.ts` |
 | `generateBarrel` | `boolean` | `true` | Generates `services/index.ts` |
 | `generateProjectStructure` | `boolean` | `false` | Generates `layout/`, `pages/landing-page/`, `routes/`, `shared/` under `src/app` and empty subfolders under `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`); creates/overwrites `app.routes.ts` |
 
@@ -375,6 +405,7 @@ CLI para gerar `BaseService`, `CacheService`, modelos de cache e (opcionalmente)
 
 - **Node.js** ≥ 18
 - Projeto **Angular** com `package.json` na raiz (onde corres o comando)
+- Se `@angular/core` não for encontrado no `package.json`, o CLI pergunta se queres continuar na mesma.
 - Para a opção **`httpResource`** no `GET`: Angular **19.1+** (`httpResource` é experimental; ver [documentação](https://angular.dev/guide/signals/resource))
 
 ## Instalação rápida
@@ -397,13 +428,14 @@ O fluxo é **interativo**. No final é criado **`.ngx-base-cli.json`** na raiz �
 
 | Pergunta | Predefinição / notas |
 |----------|----------------------|
+| Modo de setup | **Rápido (preset)** (recomendado) ou **Custom (wizard passo-a-passo)** |
 | `BASE_API_URL` | `https://api.example.com` (deve começar por `http://` ou `https://`) |
 | Diretório de saída | `src/app/core` (caminho **relativo** à raiz do projeto) |
 | Imports de `cache.interface` | **Alias** (`@core/interfaces/...`) ou **relativo** (`../interfaces/...`) |
 | `httpResource` no `GET` | Só se Angular ≥ **19.1**; predefinição **sim** quando disponível (API experimental) |
 | Motor do `CacheService` | `localStorage` (predefinido), `sessionStorage` ou `memory` (ex.: SSR) |
-| `AuthInterceptor` (Bearer) | Predefinição **não**; se sim: nome do token (ex. `AUTH_TOKEN`) e caminho de import (ex. `@core/tokens`) |
-| `ErrorInterceptor` (401/403/5xx) | Predefinição **não** |
+| Interceptors HTTP | Multi-select: `AuthInterceptor` (Bearer), `ErrorInterceptor` (401/403/5xx), `LoggingInterceptor` (logs só em dev) |
+| Token (se `AuthInterceptor`) | Nome do token (ex. `AUTH_TOKEN`) e caminho de import (ex. `@core/tokens`) |
 | Barrel `services/index.ts` | Predefinição **sim** |
 | Estrutura base de pastas | Predefinição **não**; gera `layout/`, `pages/`, `routes/`, `shared/` em `src/app` e subpastas em `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`) |
 | Ficheiros já existentes | Pergunta se queres **sobrescrever** (predefinição **não**) |
@@ -422,7 +454,11 @@ src/app/core/
 │   └── index.ts              # se geraste barrel
 └── interceptors/               # opcional
     ├── auth.interceptor.ts
-    └── error.interceptor.ts
+    ├── error.interceptor.ts
+    └── logging.interceptor.ts
+src/environments/
+├── environment.ts
+└── environment.prod.ts
 ```
 
 ### Estrutura adicional com `Estrutura base de pastas` ativada
@@ -484,28 +520,43 @@ Em `tsconfig.json` (e `tsconfig.app.json` se aplicável):
 
 Ajusta o caminho se o teu `outputDir` for diferente de `src/app/core`. Os aliases `@layout/*`, `@pages/*` e `@shared/*` são usados pelos ficheiros gerados quando ativas a opção **Estrutura base de pastas**.
 
-### 2. Providers HTTP e `BASE_API_URL`
+> Nota: se aceitares a opção do CLI para patchar `tsconfig.json`, ele reescreve o ficheiro como JSON e pode remover comentários.
+
+### 2. Environments e `angular.json` (file replacements em produção)
+
+O `init` gera:
+
+- `src/environments/environment.ts`
+- `src/environments/environment.prod.ts`
+
+Se existir `angular.json`, o `init` também tenta garantir que a build de produção faz replace de `environment.ts` por `environment.prod.ts` via `fileReplacements` (patch idempotente).
+
+### 3. Providers HTTP e `BASE_API_URL`
 
 O token **`BASE_API_URL`** é gerado em **`cache.service.ts`** (não no `BaseService`). O próprio `init` mostra um exemplo com imports relativos a partir de `src/app`; em alternativa:
 
 ```typescript
 import { ApplicationConfig } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { environment } from '../environments/environment';
 import { BASE_API_URL } from '@core/services/cache.service';
 import { authInterceptor } from '@core/interceptors/auth.interceptor';
 import { errorInterceptor } from '@core/interceptors/error.interceptor';
+import { loggingInterceptor } from '@core/interceptors/logging.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
-    { provide: BASE_API_URL, useValue: 'https://api.example.com' },
+    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor, loggingInterceptor])),
+    { provide: BASE_API_URL, useValue: environment.baseApiUrl },
   ],
 };
 ```
 
 Se **não** geraste interceptors, usa apenas `provideHttpClient()` e o provider de `BASE_API_URL`.
 
-### 3. Token de autenticação (se geraste `AuthInterceptor`)
+O `init` também pode patchar automaticamente `src/app/app.config.ts` (imports + `provideHttpClient(...)` + `{ provide: BASE_API_URL, useValue: environment.baseApiUrl }`). Se o teu `app.config.ts` já tiver `withInterceptors(...)`, o CLI não faz merge automático das listas — tens de adicionar os interceptors gerados manualmente.
+
+### 4. Token de autenticação (se geraste `AuthInterceptor`)
 
 Exporta um `InjectionToken<string>` no caminho que indicaste (ex. `@core/tokens`) e fornece o valor nos `providers`:
 
@@ -642,6 +693,14 @@ Regenera os ficheiros do **`init`** com base em **`.ngx-base-cli.json`**, compar
 npx ngx-base-cli update
 ```
 
+Aplicar todas as atualizações sem prompts por ficheiro:
+
+```bash
+npx ngx-base-cli update --yes
+# ou
+npx ngx-base-cli update -y
+```
+
 ## Comando `list`
 
 Mostra o estado de sincronização de cada ficheiro que o `init` geraria, sem tocar no disco.
@@ -704,6 +763,7 @@ Ficheiro na **raiz do projeto Angular** (mesmo nível que `package.json`). Valor
 | `authTokenName` | `string` | `"AUTH_TOKEN"` | Nome do símbolo importado no interceptor |
 | `authTokenImportPath` | `string` | `"@core/tokens"` | Caminho de import do token |
 | `generateErrorInterceptor` | `boolean` | `false` | Gera `interceptors/error.interceptor.ts` |
+| `generateLoggingInterceptor` | `boolean` | `false` | Gera `interceptors/logging.interceptor.ts` |
 | `generateBarrel` | `boolean` | `true` | Gera `services/index.ts` |
 | `generateProjectStructure` | `boolean` | `false` | Gera `layout/`, `pages/landing-page/`, `routes/`, `shared/` em `src/app` e subpastas vazias em `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`); cria/sobrescreve `app.routes.ts` |
 
