@@ -1,6 +1,6 @@
 {
   "name": "ngx-base-cli",
-  "version": "0.1.0-alpha.8",
+  "version": "0.1.0-beta.1",
   "description": "CLI to scaffold BaseService and CacheService in Angular projects (shadcn/ui style)",
   "license": "MIT",
   "author": "",
@@ -13,7 +13,9 @@
     "build": "tsup && node ./scripts/copy-templates.mjs",
     "prepublishOnly": "npm run build",
     "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=18"
@@ -24,7 +26,8 @@
     "diff": "^9.0.0",
     "fs-extra": "^11.3.0",
     "picocolors": "^1.1.1",
-    "strip-json-comments": "^5.0.3"
+    "strip-json-comments": "^5.0.3",
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",
@@ -32,7 +35,8 @@
     "@types/node": "^22.14.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.7"
   },
   "keywords": [
     "angular",

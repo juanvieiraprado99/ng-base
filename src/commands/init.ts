@@ -10,6 +10,12 @@ import type { NgxBaseCliConfig, StorageEngine } from "../lib/config.js";
 import { writeNgxBaseConfig } from "../lib/config.js";
 import { buildGenerationTargets } from "../lib/generate-plan.js";
 import { importFromSrcApp } from "../lib/import-paths.js";
+import {
+  manifestKey,
+  sha256,
+  writeManifest,
+  type Manifest,
+} from "../lib/manifest.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
 import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
 import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
@@ -42,7 +48,8 @@ async function promptPresetSelection(): Promise<NgxBaseCliConfig | null> {
 
 export async function runInit(
   cwd: string = process.cwd(),
-  yes = false
+  yes = false,
+  dryRun = false
 ): Promise<void> {
   p.intro(pc.inverse(" ngx-base-cli init "));
 
@@ -116,6 +123,32 @@ export async function runInit(
 
   const targets = buildGenerationTargets(cwd, config);
 
+  if (dryRun) {
+    p.log.message(pc.bold("Dry run — no files will be written."));
+    for (const t of targets) {
+      const exists = await fse.pathExists(t.outPath);
+      const tag = exists ? pc.yellow("overwrite") : pc.green("create");
+      console.log(`  ${tag}  ${path.relative(cwd, t.outPath).replace(/\\/g, "/")}`);
+    }
+    console.log("");
+    const patches: string[] = [];
+    if (await fse.pathExists(path.join(cwd, "angular.json"))) {
+      patches.push("angular.json — production fileReplacements");
+    }
+    if (config.importStyle === "alias" && (await fse.pathExists(path.join(cwd, "tsconfig.json")))) {
+      patches.push("tsconfig.json — path aliases (@core/*, @layout/*, @pages/*, @shared/*)");
+    }
+    if (await fse.pathExists(path.join(cwd, "src/app/app.config.ts"))) {
+      patches.push("src/app/app.config.ts — providers (HTTP + BASE_API_URL)");
+    }
+    if (patches.length > 0) {
+      p.log.message(pc.bold("Would patch:"));
+      for (const item of patches) console.log(`  ${pc.cyan("patch")}  ${item}`);
+    }
+    p.outro(pc.green(`Dry run complete — ${targets.length} file(s) planned.`));
+    return;
+  }
+
   const existingChecks = await Promise.all(
     targets.map((t) => fse.pathExists(t.outPath))
   );
@@ -135,6 +168,7 @@ export async function runInit(
   }
 
   let skippedExistingCount = 0;
+  const manifest: Manifest = { version: 1, files: {} };
   for (const t of targets) {
     await fse.mkdir(path.dirname(t.outPath), { recursive: true });
 
@@ -147,6 +181,10 @@ export async function runInit(
 
     const content = await renderGenerationTarget(t);
     await fse.outputFile(t.outPath, content, "utf8");
+    manifest.files[manifestKey(cwd, t.outPath)] = {
+      hash: sha256(content),
+      template: t.template,
+    };
     p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
   }
   if (skippedExistingCount > 0) {
@@ -158,6 +196,7 @@ export async function runInit(
   }
 
   await writeNgxBaseConfig(cwd, config);
+  await writeManifest(cwd, manifest);
 
   const angularJsonPath = path.join(cwd, "angular.json");
   if (await fse.pathExists(angularJsonPath)) {
@@ -182,13 +221,6 @@ export async function runInit(
   }
 
   const appCfgResult = await patchAppConfigForHttp(cwd, config);
-  if (appCfgResult.withInterceptorsAlreadyPresent) {
-    p.log.warn(
-      pc.yellow(
-        "app.config.ts already contains withInterceptors(...). ngx-base-cli will not merge interceptor lists automatically; add the generated interceptors to your withInterceptors([...]) manually."
-      )
-    );
-  }
   let noteBody: string;
   if (appCfgResult.patched) {
     noteBody =

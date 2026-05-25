@@ -49,15 +49,54 @@ const VALID_IMPORT_STYLES: NgxBaseCliConfig["importStyle"][] = [
   "relative",
 ];
 
+const KEY_TYPES: Record<keyof NgxBaseCliConfig, "string" | "boolean"> = {
+  outputDir: "string",
+  baseApiUrl: "string",
+  importStyle: "string",
+  useHttpResource: "boolean",
+  storageEngine: "string",
+  generateAuthInterceptor: "boolean",
+  authTokenName: "string",
+  authTokenImportPath: "string",
+  generateErrorInterceptor: "boolean",
+  generateLoggingInterceptor: "boolean",
+  generateBarrel: "boolean",
+  generateProjectStructure: "boolean",
+};
+
 export async function readNgxBaseConfig(
   cwd: string
 ): Promise<NgxBaseCliConfig | null> {
   const p = configPath(cwd);
   if (!(await fse.pathExists(p))) return null;
   const raw = await fse.readFile(p, "utf8");
-  const parsed = JSON.parse(raw) as Partial<NgxBaseCliConfig>;
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
 
-  const merged: NgxBaseCliConfig = { ...DEFAULT_NGX_BASE_CONFIG, ...parsed };
+  const knownKeys = Object.keys(KEY_TYPES) as (keyof NgxBaseCliConfig)[];
+
+  for (const key of Object.keys(parsed)) {
+    if (!(key in KEY_TYPES)) {
+      console.warn(
+        `[ngx-base-cli] Unknown config key "${key}" — ignored. ` +
+          `Known keys: ${knownKeys.join(", ")}.`
+      );
+    }
+  }
+
+  const validated: Partial<NgxBaseCliConfig> = {};
+  for (const key of knownKeys) {
+    if (parsed[key] === undefined) continue;
+    if (typeof parsed[key] !== KEY_TYPES[key]) {
+      console.warn(
+        `[ngx-base-cli] Invalid type for "${key}" (expected ${KEY_TYPES[key]}). ` +
+          `Using default "${String(DEFAULT_NGX_BASE_CONFIG[key])}".`
+      );
+      continue;
+    }
+    (validated as Record<string, unknown>)[key] = parsed[key];
+  }
+
+  const merged: NgxBaseCliConfig = { ...DEFAULT_NGX_BASE_CONFIG, ...validated };
 
   if (
     parsed.storageEngine !== undefined &&
