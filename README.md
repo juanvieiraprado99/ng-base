@@ -28,7 +28,7 @@ npx ngx-base-cli@latest init
 Pre-release versions (`alpha` tag):
 
 ```bash
-npx ngx-base-cli@alpha init
+npx ngx-base-cli@beta init
 ```
 
 The flow is **interactive**. When finished, **`.ngx-base-cli.json`** is created at the root — required for `add` and `update`.
@@ -241,16 +241,89 @@ There are also `post`, `put`, `patch`, `delete` with `HttpClient` and `take(1)` 
 - Does **not** inject `CacheService` or use `CacheOptions` in this mode.
 - `post`, `put`, `patch`, `delete` remain `Observable`-based as in classic mode.
 
-## `add` command — feature service
+## `add` command — feature artifacts
 
-Generates `<outputDir>/services/<kebab-name>.service.ts` extending `BaseService`. With the default `outputDir` of `src/app/core`, the file lands at **`src/app/core/services/user.service.ts`**. Requires `.ngx-base-cli.json` and `base.service.ts` in the configured `outputDir`.
+Generates a feature artifact under the configured `outputDir`. The artifact type is chosen with `-t, --type` (default **`service`**). Requires `.ngx-base-cli.json`.
+
+| `--type` | Generated file(s) (`outputDir = src/app/core`) |
+|----------|-------------------------------------------------|
+| `service` (default) | `core/services/<kebab>.service.ts` (extends `BaseService`) |
+| `component` | `core/components/<kebab>/<kebab>.component.ts` (+ `.html` / stylesheet) |
+| `guard` | `core/guards/<kebab>.guard.ts` (functional `CanActivateFn`) |
+| `resolver` | `core/resolvers/<kebab>.resolver.ts` (functional `ResolveFn`) |
+| `pipe` | `core/pipes/<kebab>.pipe.ts` (`PipeTransform`, `name: '<camel>'`) |
+| `directive` | `core/directives/<kebab>.directive.ts` (`selector: '[app<Pascal>]'`) |
+| `interface` | `core/interfaces/<kebab>.interface.ts` (`export interface <Pascal>`) |
+| `store` | `core/stores/<kebab>.store.ts` (signal-based store) |
+| `enum` | `core/enum/<kebab>.enum.ts` (`export enum <Pascal>`) |
 
 ```bash
-npx ngx-base-cli add user
+npx ngx-base-cli add user                       # service (default)
 npx ngx-base-cli add product-catalog
+npx ngx-base-cli add user --type component
+npx ngx-base-cli add auth --type guard
+npx ngx-base-cli add user --type resolver
+npx ngx-base-cli add truncate-text --type pipe
+npx ngx-base-cli add highlight --type directive
+npx ngx-base-cli add user --type interface
+npx ngx-base-cli add cart --type store
+npx ngx-base-cli add order-status --type enum
 ```
 
-Example generated file (`outputDir = src/app/core`):
+#### Component flags
+
+`add --type component` accepts two extra flags:
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--inline-template` | off | Inline `template:` in the decorator; no separate `.html` file |
+| `--style <ext>` | `scss` | Stylesheet extension: `scss`, `css`, or `none` (no `styleUrl`) |
+
+```bash
+# default: .ts + .html + .scss
+npx ngx-base-cli add user --type component
+
+# inline template, no stylesheet — single .ts file
+npx ngx-base-cli add user --type component --inline-template --style none
+
+# external template + .css stylesheet
+npx ngx-base-cli add user --type component --style css
+```
+
+Generated `user.component.ts` (inline template, no style):
+
+```typescript
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+@Component({
+  selector: 'app-user',
+  template: '<section class="app-user"><!-- UserComponent --></section>',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class UserComponent {}
+```
+
+Generated `cart.store.ts` (`add cart --type store`):
+
+```typescript
+import { computed, Injectable, signal } from '@angular/core';
+
+@Injectable({ providedIn: 'root' })
+export class CartStore {
+  private readonly _loading = signal(false);
+
+  readonly loading = this._loading.asReadonly();
+  readonly ready = computed(() => !this._loading());
+
+  setLoading(value: boolean): void {
+    this._loading.set(value);
+  }
+}
+```
+
+> `service` also requires `base.service.ts` in the configured `outputDir` (run `init` first). With the default `outputDir`, `add user` lands at **`src/app/core/services/user.service.ts`**.
+
+Example generated service file (`outputDir = src/app/core`):
 
 ```typescript
 import { Injectable } from '@angular/core';
@@ -292,6 +365,18 @@ export class UserListComponent {
 }
 ```
 
+## `remove` command (alias `rm`)
+
+Deletes a generated artifact and drops its entries from the manifest. Same `-t, --type` as `add`. Asks for confirmation before deleting; for `component` it removes the whole feature folder (since `--inline-template` / `--style` change which files exist).
+
+```bash
+npx ngx-base-cli remove user --type pipe
+npx ngx-base-cli rm user --type component        # removes core/components/user/
+npx ngx-base-cli remove order-status --type enum
+```
+
+If nothing matches on disk, the command is a no-op and reports it.
+
 ## `update` command
 
 Regenerates **`init`** files from **`.ngx-base-cli.json`**, compares with disk, and shows a **colored diff**; asks for confirmation before overwriting each changed file.
@@ -310,9 +395,15 @@ npx ngx-base-cli update --yes
 npx ngx-base-cli update -y
 ```
 
+By default, files you have **locally edited** since the CLI wrote them are detected (via the manifest) and **skipped** to avoid losing your changes. To overwrite them too, pass `-f, --force`:
+
+```bash
+npx ngx-base-cli update --force
+```
+
 ## `list` command
 
-Shows the sync status of every file that `init` would generate, without touching disk.
+Shows the sync status of every file that `init` would generate, without touching disk. Statuses come from the manifest: **in sync**, **out of date** (pristine CLI output the template would now regenerate differently), **locally edited**, or **absent**. The command exits with a **non-zero code** when any file is out of date or absent, so it can gate CI.
 
 ```bash
 npx ngx-base-cli list
@@ -323,11 +414,39 @@ Output example:
 ```
 ✅  src/app/core/interfaces/cache.interface.ts     present, in sync
 ✅  src/app/core/services/cache.service.ts         present, in sync
-⚠️   src/app/core/services/base.service.ts          present, diverges from template
+⚠️   src/app/core/services/base.service.ts          out of date
 ❌  src/app/core/interceptors/auth.interceptor.ts  absent
 ```
 
 Useful to audit the project state before running `update`.
+
+## `doctor` command
+
+Validates your **setup** after `init` (where `list` validates generated **files**). It checks:
+
+- Base files present (`cache.interface.ts`, `cache.service.ts`, `base.service.ts`)
+- `src/environments/environment.ts` and `environment.prod.ts`
+- `tsconfig.json` path aliases (`@core/*`, and `@layout/*` / `@pages/*` / `@shared/*` when project structure is enabled)
+- `src/app/app.config.ts` wires `provideHttpClient(...)`, the `BASE_API_URL` provider, and `withInterceptors(...)` when interceptors were generated
+- The `AUTH_TOKEN` is provided when `AuthInterceptor` was generated
+
+Exits with a **non-zero code** when any check is an **error**, so it can gate CI.
+
+```bash
+npx ngx-base-cli doctor
+```
+
+Output example:
+
+```
+XX  cache.service.ts present
+      Expected at src/app/core/services/cache.service.ts. Run `ngx-base-cli init`.
+OK  base.service.ts present
+!!  alias @core/*
+      Add it to tsconfig.json compilerOptions.paths.
+OK  provideHttpClient()
+OK  BASE_API_URL provider
+```
 
 ## `--yes` flag (init)
 
@@ -346,6 +465,14 @@ You are asked a **single question** — which preset to apply — and then the w
 | `minimal` | cache + base service only, localStorage, no interceptors |
 | `standard` | cache + base service + auth interceptor + error interceptor + barrel |
 | `full` | standard + base folder structure (layout, pages, routes, shared) |
+
+## `--dry-run` flag (init)
+
+Preview what `init` would generate without writing any file to disk:
+
+```bash
+npx ngx-base-cli init --dry-run
+```
 
 ## `--cwd` option
 
@@ -375,6 +502,10 @@ File at the **Angular project root** (same level as `package.json`). Missing val
 | `generateLoggingInterceptor` | `boolean` | `false` | Generates `interceptors/logging.interceptor.ts` |
 | `generateBarrel` | `boolean` | `true` | Generates `services/index.ts` |
 | `generateProjectStructure` | `boolean` | `false` | Generates `layout/`, `pages/landing-page/`, `routes/`, `shared/` under `src/app` and empty subfolders under `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`); creates/overwrites `app.routes.ts` |
+
+## `.ngx-base-cli.manifest.json`
+
+Alongside the config, `init`, `add`, and `update` maintain **`.ngx-base-cli.manifest.json`** in the project root — a sha256 hash of each generated file. This lets `list` and `update` tell pristine CLI output apart from files you edited by hand (so they can be skipped on update). Safe to commit; do not edit by hand.
 
 ## Local development (CLI repository)
 
@@ -632,16 +763,58 @@ Há também `post`, `put`, `patch`, `delete` com `HttpClient` e `take(1)` onde a
 - **Não** injeta `CacheService` nem usa `CacheOptions` neste modo.
 - `post`, `put`, `patch`, `delete` mantêm-se com `Observable` como no modo clássico.
 
-## Comando `add` — serviço de feature
+## Comando `add` — artefactos de feature
 
-Gera `<outputDir>/services/<nome-kebab>.service.ts` a estender `BaseService`. Com o `outputDir` predefinido `src/app/core`, o ficheiro fica em **`src/app/core/services/user.service.ts`**. Exige `.ngx-base-cli.json` e `base.service.ts` no `outputDir` configurado.
+Gera um artefacto de feature dentro do `outputDir` configurado. O tipo é escolhido com `-t, --type` (predefinição **`service`**). Exige `.ngx-base-cli.json`.
+
+| `--type` | Ficheiro(s) gerado(s) (`outputDir = src/app/core`) |
+|----------|----------------------------------------------------|
+| `service` (predefinido) | `core/services/<kebab>.service.ts` (estende `BaseService`) |
+| `component` | `core/components/<kebab>/<kebab>.component.ts` (+ `.html` / folha de estilos) |
+| `guard` | `core/guards/<kebab>.guard.ts` (`CanActivateFn` funcional) |
+| `resolver` | `core/resolvers/<kebab>.resolver.ts` (`ResolveFn` funcional) |
+| `pipe` | `core/pipes/<kebab>.pipe.ts` (`PipeTransform`, `name: '<camel>'`) |
+| `directive` | `core/directives/<kebab>.directive.ts` (`selector: '[app<Pascal>]'`) |
+| `interface` | `core/interfaces/<kebab>.interface.ts` (`export interface <Pascal>`) |
+| `store` | `core/stores/<kebab>.store.ts` (store baseada em signals) |
+| `enum` | `core/enum/<kebab>.enum.ts` (`export enum <Pascal>`) |
 
 ```bash
-npx ngx-base-cli add user
+npx ngx-base-cli add user                       # service (predefinido)
 npx ngx-base-cli add product-catalog
+npx ngx-base-cli add user --type component
+npx ngx-base-cli add auth --type guard
+npx ngx-base-cli add user --type resolver
+npx ngx-base-cli add truncate-text --type pipe
+npx ngx-base-cli add highlight --type directive
+npx ngx-base-cli add user --type interface
+npx ngx-base-cli add cart --type store
+npx ngx-base-cli add order-status --type enum
 ```
 
-Exemplo de ficheiro gerado (`outputDir = src/app/core`):
+#### Flags do component
+
+`add --type component` aceita duas flags extra:
+
+| Flag | Predefinição | Efeito |
+|------|--------------|--------|
+| `--inline-template` | desligada | `template:` inline no decorator; sem ficheiro `.html` |
+| `--style <ext>` | `scss` | Extensão da folha de estilos: `scss`, `css` ou `none` (sem `styleUrl`) |
+
+```bash
+# predefinição: .ts + .html + .scss
+npx ngx-base-cli add user --type component
+
+# template inline, sem estilos — um único .ts
+npx ngx-base-cli add user --type component --inline-template --style none
+
+# template externo + folha .css
+npx ngx-base-cli add user --type component --style css
+```
+
+> `service` exige também `base.service.ts` no `outputDir` configurado (corre `init` primeiro). Com o `outputDir` predefinido, `add user` fica em **`src/app/core/services/user.service.ts`**.
+
+Exemplo de ficheiro de serviço gerado (`outputDir = src/app/core`):
 
 ```typescript
 import { Injectable } from '@angular/core';
@@ -683,6 +856,18 @@ export class UserListComponent {
 }
 ```
 
+## Comando `remove` (alias `rm`)
+
+Apaga um artefacto gerado e remove as suas entradas do manifest. Mesmo `-t, --type` do `add`. Pede confirmação antes de apagar; para `component` remove a pasta inteira da feature (porque `--inline-template` / `--style` alteram que ficheiros existem).
+
+```bash
+npx ngx-base-cli remove user --type pipe
+npx ngx-base-cli rm user --type component        # remove core/components/user/
+npx ngx-base-cli remove order-status --type enum
+```
+
+Se nada corresponder no disco, o comando não faz nada e avisa.
+
 ## Comando `update`
 
 Regenera os ficheiros do **`init`** com base em **`.ngx-base-cli.json`**, compara com o disco e mostra um **diff** colorido; pergunta confirmação antes de sobrescrever cada ficheiro alterado.
@@ -701,9 +886,15 @@ npx ngx-base-cli update --yes
 npx ngx-base-cli update -y
 ```
 
+Por predefinição, ficheiros que **editaste localmente** desde que o CLI os escreveu são detetados (via manifest) e **ignorados** para não perder as tuas alterações. Para os sobrescrever também, usa `-f, --force`:
+
+```bash
+npx ngx-base-cli update --force
+```
+
 ## Comando `list`
 
-Mostra o estado de sincronização de cada ficheiro que o `init` geraria, sem tocar no disco.
+Mostra o estado de sincronização de cada ficheiro que o `init` geraria, sem tocar no disco. Os estados vêm do manifest: **em sync**, **desatualizado** (output original do CLI que o template geraria agora de forma diferente), **editado localmente** ou **ausente**. O comando termina com **código não-zero** quando algum ficheiro está desatualizado ou ausente, podendo servir de gate em CI.
 
 ```bash
 npx ngx-base-cli list
@@ -714,11 +905,39 @@ Exemplo de saída:
 ```
 ✅  src/app/core/interfaces/cache.interface.ts     presente, em sync
 ✅  src/app/core/services/cache.service.ts         presente, em sync
-⚠️   src/app/core/services/base.service.ts          presente, diverge do template
+⚠️   src/app/core/services/base.service.ts          desatualizado
 ❌  src/app/core/interceptors/auth.interceptor.ts  ausente
 ```
 
 Útil para auditar o estado do projeto antes de correr `update`.
+
+## Comando `doctor`
+
+Valida o teu **setup** depois do `init` (enquanto o `list` valida os **ficheiros** gerados). Verifica:
+
+- Ficheiros base presentes (`cache.interface.ts`, `cache.service.ts`, `base.service.ts`)
+- `src/environments/environment.ts` e `environment.prod.ts`
+- Aliases no `tsconfig.json` (`@core/*`, e `@layout/*` / `@pages/*` / `@shared/*` quando a estrutura base está ativada)
+- `src/app/app.config.ts` liga `provideHttpClient(...)`, o provider `BASE_API_URL` e `withInterceptors(...)` quando há interceptors gerados
+- O `AUTH_TOKEN` está fornecido quando o `AuthInterceptor` foi gerado
+
+Termina com **código não-zero** quando alguma verificação é **erro**, podendo servir de gate em CI.
+
+```bash
+npx ngx-base-cli doctor
+```
+
+Exemplo de saída:
+
+```
+XX  cache.service.ts present
+      Expected at src/app/core/services/cache.service.ts. Run `ngx-base-cli init`.
+OK  base.service.ts present
+!!  alias @core/*
+      Add it to tsconfig.json compilerOptions.paths.
+OK  provideHttpClient()
+OK  BASE_API_URL provider
+```
 
 ## Flag `--yes` (init)
 
@@ -737,6 +956,14 @@ npx ngx-base-cli init -y
 | `minimal` | cache + base service apenas, localStorage, sem interceptors |
 | `standard` | cache + base service + auth interceptor + error interceptor + barrel |
 | `full` | standard + estrutura base de pastas (layout, pages, routes, shared) |
+
+## Flag `--dry-run` (init)
+
+Pré-visualiza o que o `init` geraria sem escrever nenhum ficheiro no disco:
+
+```bash
+npx ngx-base-cli init --dry-run
+```
 
 ## Opção `--cwd`
 
@@ -766,6 +993,10 @@ Ficheiro na **raiz do projeto Angular** (mesmo nível que `package.json`). Valor
 | `generateLoggingInterceptor` | `boolean` | `false` | Gera `interceptors/logging.interceptor.ts` |
 | `generateBarrel` | `boolean` | `true` | Gera `services/index.ts` |
 | `generateProjectStructure` | `boolean` | `false` | Gera `layout/`, `pages/landing-page/`, `routes/`, `shared/` em `src/app` e subpastas vazias em `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`); cria/sobrescreve `app.routes.ts` |
+
+## `.ngx-base-cli.manifest.json`
+
+Além da config, o `init`, `add` e `update` mantêm **`.ngx-base-cli.manifest.json`** na raiz do projeto — um hash sha256 de cada ficheiro gerado. Isto permite ao `list` e `update` distinguir o output original do CLI de ficheiros que editaste à mão (para os ignorar no update). Seguro para commit; não editar à mão.
 
 ## Desenvolvimento local (repositório do CLI)
 

@@ -2,7 +2,7 @@ import type { GenerationTarget } from "./generate-plan.js";
 import { applyTemplate } from "./templates.js";
 
 export async function renderGenerationTarget(
-  target: GenerationTarget
+  target: GenerationTarget,
 ): Promise<string> {
   if (target.rawContent !== undefined) {
     return target.rawContent;

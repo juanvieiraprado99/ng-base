@@ -1,10 +1,24 @@
-export type AddType = "service" | "component" | "guard" | "resolver";
+export type AddType =
+  | "service"
+  | "component"
+  | "guard"
+  | "resolver"
+  | "pipe"
+  | "directive"
+  | "interface"
+  | "store"
+  | "enum";
 
 export const ADD_TYPES: AddType[] = [
   "service",
   "component",
   "guard",
   "resolver",
+  "pipe",
+  "directive",
+  "interface",
+  "store",
+  "enum",
 ];
 
 export function kebabName(raw: string): string {
@@ -33,6 +47,11 @@ const CLASS_SUFFIX: Record<AddType, string> = {
   component: "Component",
   guard: "Guard",
   resolver: "Resolver",
+  pipe: "Pipe",
+  directive: "Directive",
+  interface: "",
+  store: "Store",
+  enum: "",
 };
 
 /** Class/const identifier for a generated artifact, e.g. `UserService`, `userGuard`. */

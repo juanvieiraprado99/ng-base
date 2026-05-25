@@ -1,8 +1,11 @@
-import fse from "fs-extra";
 import os from "node:os";
 import path from "node:path";
+import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_NGX_BASE_CONFIG, type NgxBaseCliConfig } from "../src/lib/config";
+import {
+  DEFAULT_NGX_BASE_CONFIG,
+  type NgxBaseCliConfig,
+} from "../src/lib/config";
 import { patchAppConfigForHttp } from "../src/lib/patch-app-config";
 
 let dir: string;
@@ -44,12 +47,14 @@ import { provideHttpClient } from '@angular/common/http';
 export const appConfig: ApplicationConfig = {
   providers: [provideHttpClient()],
 };
-`
+`,
     );
     const res = await patchAppConfigForHttp(dir, withAuth);
     expect(res.patched).toBe(true);
     const out = await read(p);
-    expect(out).toMatch(/provideHttpClient\(\s*withInterceptors\(\[authInterceptor\]\)\s*\)/);
+    expect(out).toMatch(
+      /provideHttpClient\(\s*withInterceptors\(\[authInterceptor\]\)\s*\)/,
+    );
     expect(out).toContain("authInterceptor");
     expect(out).toContain("environment.baseApiUrl");
     expect(out).toContain("BASE_API_URL");
@@ -64,7 +69,7 @@ import { existingInterceptor } from './x';
 export const appConfig: ApplicationConfig = {
   providers: [provideHttpClient(withInterceptors([existingInterceptor]))],
 };
-`
+`,
     );
     const res = await patchAppConfigForHttp(dir, withAuth);
     expect(res.patched).toBe(true);
@@ -81,7 +86,7 @@ import { provideHttpClient } from '@angular/common/http';
 export const appConfig: ApplicationConfig = {
   providers: [provideHttpClient()],
 };
-`
+`,
     );
     const first = await patchAppConfigForHttp(dir, withAuth);
     expect(first.patched).toBe(true);
@@ -96,12 +101,14 @@ export const appConfig: ApplicationConfig = {
 export const appConfig: ApplicationConfig = {
   providers: [],
 };
-`
+`,
     );
     const res = await patchAppConfigForHttp(dir, withAuth);
     expect(res.patched).toBe(true);
     const out = await read(p);
-    expect(out).toContain("provideHttpClient(withInterceptors([authInterceptor]))");
+    expect(out).toContain(
+      "provideHttpClient(withInterceptors([authInterceptor]))",
+    );
   });
 
   it("survives comments and multiline providers", async () => {
@@ -118,7 +125,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(),
   ],
 };
-`
+`,
     );
     const res = await patchAppConfigForHttp(dir, withAuth);
     expect(res.patched).toBe(true);

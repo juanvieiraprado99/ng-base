@@ -11,7 +11,10 @@ const resolveJsToTs = {
   enforce: "pre" as const,
   resolveId(source: string, importer: string | undefined) {
     if (importer && source.startsWith(".") && source.endsWith(".js")) {
-      const candidate = resolve(dirname(importer), source.replace(/\.js$/, ".ts"));
+      const candidate = resolve(
+        dirname(importer),
+        source.replace(/\.js$/, ".ts"),
+      );
       if (existsSync(candidate)) return candidate;
     }
     return null;

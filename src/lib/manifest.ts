@@ -51,20 +51,20 @@ export async function readManifest(cwd: string): Promise<Manifest> {
 
 export async function writeManifest(
   cwd: string,
-  manifest: Manifest
+  manifest: Manifest,
 ): Promise<void> {
   const ordered: Manifest = {
     version: MANIFEST_VERSION,
     files: Object.fromEntries(
-      Object.keys(manifest.files)
-        .sort()
-        .map((k) => [k, manifest.files[k]!])
+      Object.entries(manifest.files).sort(([a], [b]) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      ),
     ),
   };
   await fse.writeFile(
     manifestPath(cwd),
-    JSON.stringify(ordered, null, 2) + "\n",
-    "utf8"
+    `${JSON.stringify(ordered, null, 2)}\n`,
+    "utf8",
   );
 }
 
@@ -81,7 +81,7 @@ export async function writeManifest(
 export function classifyTarget(
   diskContent: string | null,
   renderedContent: string,
-  manifestHash: string | undefined
+  manifestHash: string | undefined,
 ): SyncStatus {
   if (diskContent === null) return "absent";
   const diskHash = sha256(diskContent);

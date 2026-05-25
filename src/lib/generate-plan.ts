@@ -7,6 +7,8 @@ export interface GenerationTarget {
   vars: Record<string, string>;
   /** Conteúdo gerado sem template (ex.: barrel). */
   rawContent?: string;
+  /** Quando true, outPath é uma pasta a criar (sem ficheiro/placeholder). */
+  dirOnly?: boolean;
 }
 
 function cacheTemplateForEngine(engine: StorageEngine): string {
@@ -15,7 +17,6 @@ function cacheTemplateForEngine(engine: StorageEngine): string {
       return "cache.service.sessionstorage.ts.tpl";
     case "memory":
       return "cache.service.memory.ts.tpl";
-    case "localStorage":
     default:
       return "cache.service.localstorage.ts.tpl";
   }
@@ -23,7 +24,7 @@ function cacheTemplateForEngine(engine: StorageEngine): string {
 
 function buildEnvironmentTsContent(
   production: boolean,
-  baseApiUrl: string
+  baseApiUrl: string,
 ): string {
   return [
     "export const environment = {",
@@ -39,7 +40,7 @@ function buildBarrelContent(): string {
     "export * from './cache.service';",
     "export * from './base.service';",
   ];
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 function buildAppRoutesContent(): string {
@@ -53,12 +54,12 @@ function buildAppRoutesContent(): string {
     "  ...PRIVATE_ROUTES,",
     "];",
   ];
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 export function buildGenerationTargets(
   cwd: string,
-  config: NgxBaseCliConfig
+  config: NgxBaseCliConfig,
 ): GenerationTarget[] {
   const outputDir = config.outputDir;
   const interfacesDir = path.join(cwd, outputDir, "interfaces");
@@ -113,7 +114,7 @@ export function buildGenerationTargets(
       outPath: path.join(servicesDir, "base.service.ts"),
       template: baseTemplate,
       vars,
-    }
+    },
   );
 
   if (config.generateBarrel) {
@@ -163,10 +164,10 @@ export function buildGenerationTargets(
     }
     for (const dir of coreEmptyDirs) {
       targets.push({
-        outPath: path.join(coreDir, dir, ".gitkeep"),
+        outPath: path.join(coreDir, dir),
         template: "",
         vars: {},
-        rawContent: "",
+        dirOnly: true,
       });
     }
 
@@ -182,10 +183,10 @@ export function buildGenerationTargets(
         vars: {},
       },
       {
-        outPath: path.join(appDir, "layout/private/components/.gitkeep"),
+        outPath: path.join(appDir, "layout/private/components"),
         template: "",
         vars: {},
-        rawContent: "",
+        dirOnly: true,
       },
       {
         outPath: path.join(appDir, "layout/public/public.component.ts"),
@@ -198,18 +199,18 @@ export function buildGenerationTargets(
         vars: {},
       },
       {
-        outPath: path.join(appDir, "layout/public/components/.gitkeep"),
+        outPath: path.join(appDir, "layout/public/components"),
         template: "",
         vars: {},
-        rawContent: "",
-      }
+        dirOnly: true,
+      },
     );
 
     targets.push(
       {
         outPath: path.join(
           appDir,
-          "pages/landing-page/landing-page.component.ts"
+          "pages/landing-page/landing-page.component.ts",
         ),
         template: "pages-landing-page.component.ts.tpl",
         vars: {},
@@ -217,29 +218,29 @@ export function buildGenerationTargets(
       {
         outPath: path.join(
           appDir,
-          "pages/landing-page/landing-page.component.html"
+          "pages/landing-page/landing-page.component.html",
         ),
         template: "pages-landing-page.component.html.tpl",
         vars: {},
       },
       {
-        outPath: path.join(appDir, "pages/landing-page/components/.gitkeep"),
+        outPath: path.join(appDir, "pages/landing-page/components"),
         template: "",
         vars: {},
-        rawContent: "",
+        dirOnly: true,
       },
       {
-        outPath: path.join(appDir, "pages/landing-page/interfaces/.gitkeep"),
+        outPath: path.join(appDir, "pages/landing-page/interfaces"),
         template: "",
         vars: {},
-        rawContent: "",
+        dirOnly: true,
       },
       {
-        outPath: path.join(appDir, "pages/landing-page/services/.gitkeep"),
+        outPath: path.join(appDir, "pages/landing-page/services"),
         template: "",
         vars: {},
-        rawContent: "",
-      }
+        dirOnly: true,
+      },
     );
 
     targets.push(
@@ -252,7 +253,7 @@ export function buildGenerationTargets(
         outPath: path.join(appDir, "routes/public.routes.ts"),
         template: "routes-public.routes.ts.tpl",
         vars: {},
-      }
+      },
     );
 
     targets.push(
@@ -263,17 +264,17 @@ export function buildGenerationTargets(
         rawContent: buildAppRoutesContent(),
       },
       {
-        outPath: path.join(appDir, "shared/.gitkeep"),
+        outPath: path.join(appDir, "shared"),
         template: "",
         vars: {},
-        rawContent: "",
+        dirOnly: true,
       },
       {
         outPath: path.join(appDir, "app.html"),
         template: "",
         vars: {},
         rawContent: "<router-outlet />\n",
-      }
+      },
     );
   }
 

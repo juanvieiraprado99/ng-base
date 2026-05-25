@@ -1,13 +1,13 @@
-import fse from "fs-extra";
 import path from "node:path";
+import fse from "fs-extra";
 import {
-  Project,
-  QuoteKind,
-  SyntaxKind,
   type ArrayLiteralExpression,
   type CallExpression,
   type ObjectLiteralExpression,
+  Project,
+  QuoteKind,
   type SourceFile,
+  SyntaxKind,
 } from "ts-morph";
 import type { NgxBaseCliConfig } from "./config.js";
 import { importBetweenFiles } from "./import-paths.js";
@@ -41,11 +41,11 @@ function interceptorBindingNames(config: NgxBaseCliConfig): string[] {
 function ensureNamedImports(
   sf: SourceFile,
   moduleSpecifier: string,
-  names: string[]
+  names: string[],
 ): void {
   if (names.length === 0) return;
   const decl = sf.getImportDeclaration(
-    (d) => d.getModuleSpecifierValue() === moduleSpecifier
+    (d) => d.getModuleSpecifierValue() === moduleSpecifier,
   );
   if (!decl) {
     sf.addImportDeclaration({ moduleSpecifier, namedImports: names });
@@ -57,46 +57,47 @@ function ensureNamedImports(
 }
 
 function findProvidersArray(
-  sf: SourceFile
+  sf: SourceFile,
 ): ArrayLiteralExpression | undefined {
   const prop = sf
     .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
     .find(
       (pa) =>
         pa.getName() === "providers" &&
-        pa.getInitializerIfKind(SyntaxKind.ArrayLiteralExpression) !== undefined
+        pa.getInitializerIfKind(SyntaxKind.ArrayLiteralExpression) !==
+          undefined,
     );
   return prop?.getInitializerIfKind(SyntaxKind.ArrayLiteralExpression);
 }
 
 function findCallElement(
   arr: ArrayLiteralExpression,
-  fnName: string
+  fnName: string,
 ): CallExpression | undefined {
   return arr
     .getElements()
     .find(
       (e): e is CallExpression =>
         e.getKind() === SyntaxKind.CallExpression &&
-        (e as CallExpression).getExpression().getText() === fnName
+        (e as CallExpression).getExpression().getText() === fnName,
     ) as CallExpression | undefined;
 }
 
 function findCallArgument(
   call: CallExpression,
-  fnName: string
+  fnName: string,
 ): CallExpression | undefined {
   return call
     .getArguments()
     .find(
       (a): a is CallExpression =>
         a.getKind() === SyntaxKind.CallExpression &&
-        (a as CallExpression).getExpression().getText() === fnName
+        (a as CallExpression).getExpression().getText() === fnName,
     ) as CallExpression | undefined;
 }
 
 function findBaseApiProvider(
-  arr: ArrayLiteralExpression
+  arr: ArrayLiteralExpression,
 ): ObjectLiteralExpression | undefined {
   return arr.getElements().find((e): e is ObjectLiteralExpression => {
     const obj = e.asKind(SyntaxKind.ObjectLiteralExpression);
@@ -110,7 +111,7 @@ function findBaseApiProvider(
 
 function patchProvideHttpClient(
   arr: ArrayLiteralExpression,
-  interceptorNames: string[]
+  interceptorNames: string[],
 ): void {
   const ix = interceptorNames.join(", ");
   const call = findCallElement(arr, "provideHttpClient");
@@ -141,7 +142,7 @@ function patchBaseApiProvider(arr: ArrayLiteralExpression): void {
   const obj = findBaseApiProvider(arr);
   if (!obj) {
     arr.addElement(
-      "{ provide: BASE_API_URL, useValue: environment.baseApiUrl }"
+      "{ provide: BASE_API_URL, useValue: environment.baseApiUrl }",
     );
     return;
   }
@@ -167,7 +168,7 @@ function patchBaseApiProvider(arr: ArrayLiteralExpression): void {
  */
 export async function patchAppConfigForHttp(
   cwd: string,
-  config: NgxBaseCliConfig
+  config: NgxBaseCliConfig,
 ): Promise<PatchAppConfigResult> {
   const appConfigPath = path.join(cwd, "src/app/app.config.ts");
   if (!(await fse.pathExists(appConfigPath))) {
@@ -194,25 +195,41 @@ export async function patchAppConfigForHttp(
     "environment",
   ]);
 
-  const cacheSvc = path.join(cwd, config.outputDir, "services/cache.service.ts");
+  const cacheSvc = path.join(
+    cwd,
+    config.outputDir,
+    "services/cache.service.ts",
+  );
   ensureNamedImports(sf, importBetweenFiles(appConfigPath, cacheSvc), [
     "BASE_API_URL",
   ]);
 
   if (config.generateAuthInterceptor) {
-    const p = path.join(cwd, config.outputDir, "interceptors/auth.interceptor.ts");
+    const p = path.join(
+      cwd,
+      config.outputDir,
+      "interceptors/auth.interceptor.ts",
+    );
     ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
       "authInterceptor",
     ]);
   }
   if (config.generateErrorInterceptor) {
-    const p = path.join(cwd, config.outputDir, "interceptors/error.interceptor.ts");
+    const p = path.join(
+      cwd,
+      config.outputDir,
+      "interceptors/error.interceptor.ts",
+    );
     ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
       "errorInterceptor",
     ]);
   }
   if (config.generateLoggingInterceptor) {
-    const p = path.join(cwd, config.outputDir, "interceptors/logging.interceptor.ts");
+    const p = path.join(
+      cwd,
+      config.outputDir,
+      "interceptors/logging.interceptor.ts",
+    );
     ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
       "loggingInterceptor",
     ]);
@@ -237,7 +254,8 @@ export async function patchAppConfigForHttp(
     return {
       patched: false,
       appConfigExists: true,
-      withInterceptorsAlreadyPresent: withInterceptorsAlreadyPresent || undefined,
+      withInterceptorsAlreadyPresent:
+        withInterceptorsAlreadyPresent || undefined,
     };
   }
 

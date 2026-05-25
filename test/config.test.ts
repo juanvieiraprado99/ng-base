@@ -1,6 +1,6 @@
-import fse from "fs-extra";
 import os from "node:os";
 import path from "node:path";
+import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_NGX_BASE_CONFIG,
@@ -25,7 +25,7 @@ describe("readNgxBaseConfig", () => {
   it("merges partial config over defaults", async () => {
     await fse.writeFile(
       path.join(dir, ".ngx-base-cli.json"),
-      JSON.stringify({ baseApiUrl: "https://x.test" })
+      JSON.stringify({ baseApiUrl: "https://x.test" }),
     );
     const cfg = await readNgxBaseConfig(dir);
     expect(cfg?.baseApiUrl).toBe("https://x.test");
@@ -36,7 +36,7 @@ describe("readNgxBaseConfig", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await fse.writeFile(
       path.join(dir, ".ngx-base-cli.json"),
-      JSON.stringify({ baseApiUrl: "https://x.test", bogusKey: 1 })
+      JSON.stringify({ baseApiUrl: "https://x.test", bogusKey: 1 }),
     );
     const cfg = await readNgxBaseConfig(dir);
     expect(cfg?.baseApiUrl).toBe("https://x.test");
@@ -49,7 +49,7 @@ describe("readNgxBaseConfig", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await fse.writeFile(
       path.join(dir, ".ngx-base-cli.json"),
-      JSON.stringify({ generateBarrel: "yes", outputDir: 5 })
+      JSON.stringify({ generateBarrel: "yes", outputDir: 5 }),
     );
     const cfg = await readNgxBaseConfig(dir);
     expect(cfg?.generateBarrel).toBe(DEFAULT_NGX_BASE_CONFIG.generateBarrel);
@@ -61,7 +61,7 @@ describe("readNgxBaseConfig", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await fse.writeFile(
       path.join(dir, ".ngx-base-cli.json"),
-      JSON.stringify({ storageEngine: "bogus", importStyle: "weird" })
+      JSON.stringify({ storageEngine: "bogus", importStyle: "weird" }),
     );
     const cfg = await readNgxBaseConfig(dir);
     expect(cfg?.storageEngine).toBe(DEFAULT_NGX_BASE_CONFIG.storageEngine);

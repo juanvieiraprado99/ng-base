@@ -29,6 +29,8 @@ describe("importBetweenFiles", () => {
 describe("importFromSrcApp", () => {
   it("is relative to src/app and strips .ts", () => {
     const target = path.join("/proj/src/app/core/services", "cache.service.ts");
-    expect(importFromSrcApp("/proj", target)).toBe("./core/services/cache.service");
+    expect(importFromSrcApp("/proj", target)).toBe(
+      "./core/services/cache.service",
+    );
   });
 });

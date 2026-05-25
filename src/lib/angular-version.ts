@@ -2,7 +2,7 @@
  * Extrai a versão semver principal de um range npm (ex: ^19.1.0 → 19.1.0).
  */
 export function parseAngularCoreVersion(
-  range: string | undefined
+  range: string | undefined,
 ): string | null {
   if (!range) return null;
   const cleaned = range.replace(/^[\^~>=\s]+/, "").trim();

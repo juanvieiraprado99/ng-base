@@ -1,6 +1,9 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_NGX_BASE_CONFIG, type NgxBaseCliConfig } from "../src/lib/config";
+import {
+  DEFAULT_NGX_BASE_CONFIG,
+  type NgxBaseCliConfig,
+} from "../src/lib/config";
 import { buildGenerationTargets } from "../src/lib/generate-plan";
 import { PRESETS } from "../src/lib/presets";
 
@@ -8,7 +11,7 @@ const CWD = "/proj";
 
 function relPaths(config: NgxBaseCliConfig): string[] {
   return buildGenerationTargets(CWD, config).map((t) =>
-    path.relative(CWD, t.outPath).split(path.sep).join("/")
+    path.relative(CWD, t.outPath).split(path.sep).join("/"),
   );
 }
 
@@ -28,7 +31,9 @@ describe("buildGenerationTargets", () => {
     const paths = relPaths(PRESETS.standard);
     expect(paths).toContain("src/app/core/interceptors/auth.interceptor.ts");
     expect(paths).toContain("src/app/core/interceptors/error.interceptor.ts");
-    expect(paths).not.toContain("src/app/core/interceptors/logging.interceptor.ts");
+    expect(paths).not.toContain(
+      "src/app/core/interceptors/logging.interceptor.ts",
+    );
   });
 
   it("full preset: adds project structure (layout/pages/routes)", () => {
@@ -36,6 +41,21 @@ describe("buildGenerationTargets", () => {
     expect(paths).toContain("src/app/app.routes.ts");
     expect(paths.some((p) => p.startsWith("src/app/layout/"))).toBe(true);
     expect(paths.some((p) => p.startsWith("src/app/pages/"))).toBe(true);
+  });
+
+  it("full preset: empty folders are dir-only targets, no .gitkeep", () => {
+    const targets = buildGenerationTargets(CWD, PRESETS.full);
+    const paths = targets.map((t) =>
+      path.relative(CWD, t.outPath).split(path.sep).join("/"),
+    );
+    expect(paths.some((p) => p.endsWith(".gitkeep"))).toBe(false);
+
+    const dirTargets = targets.filter((t) => t.dirOnly);
+    const dirPaths = dirTargets.map((t) =>
+      path.relative(CWD, t.outPath).split(path.sep).join("/"),
+    );
+    expect(dirPaths).toContain("src/app/core/directives");
+    expect(dirPaths).toContain("src/app/shared");
   });
 
   it("httpResource flag selects the httpresource base template", () => {
@@ -57,7 +77,10 @@ describe("buildGenerationTargets", () => {
   });
 
   it("no barrel when generateBarrel is false", () => {
-    const paths = relPaths({ ...DEFAULT_NGX_BASE_CONFIG, generateBarrel: false });
+    const paths = relPaths({
+      ...DEFAULT_NGX_BASE_CONFIG,
+      generateBarrel: false,
+    });
     expect(paths).not.toContain("src/app/core/services/index.ts");
   });
 });

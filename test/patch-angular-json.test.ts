@@ -1,6 +1,6 @@
-import fse from "fs-extra";
 import os from "node:os";
 import path from "node:path";
+import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { patchAngularJsonFileReplacements } from "../src/lib/patch-angular-json";
 
@@ -48,7 +48,8 @@ describe("patchAngularJsonFileReplacements", () => {
     expect(res).toEqual({ ok: true, mutated: true });
     const json = JSON.parse(await fse.readFile(p, "utf8"));
     expect(
-      json.projects.app.architect.build.configurations.production.fileReplacements
+      json.projects.app.architect.build.configurations.production
+        .fileReplacements,
     ).toEqual([
       {
         replace: "src/environments/environment.ts",

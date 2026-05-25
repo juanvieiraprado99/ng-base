@@ -1,5 +1,5 @@
-import fse from "fs-extra";
 import path from "node:path";
+import fse from "fs-extra";
 import { parseJsonWithComments } from "./parse-jsonc.js";
 
 const ENV_REPLACE = "src/environments/environment.ts";
@@ -12,7 +12,7 @@ function normalizeConfigPath(p: string): string {
 function fileReplacementEntryExists(
   list: unknown,
   replace: string,
-  withPath: string
+  withPath: string,
 ): boolean {
   if (!Array.isArray(list)) return false;
   const r = normalizeConfigPath(replace);
@@ -22,12 +22,12 @@ function fileReplacementEntryExists(
       e &&
       typeof e === "object" &&
       normalizeConfigPath(String((e as { replace?: string }).replace)) === r &&
-      normalizeConfigPath(String((e as { with?: string }).with)) === w
+      normalizeConfigPath(String((e as { with?: string }).with)) === w,
   );
 }
 
 function getBuildSection(
-  project: Record<string, unknown>
+  project: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   const architect = project.architect as Record<string, unknown> | undefined;
   const targets = project.targets as Record<string, unknown> | undefined;
@@ -38,7 +38,7 @@ function getBuildSection(
 }
 
 function resolveApplicationProjectKey(
-  root: Record<string, unknown>
+  root: Record<string, unknown>,
 ): string | null {
   const projects = root.projects as Record<string, unknown> | undefined;
   if (!projects || typeof projects !== "object") return null;
@@ -57,7 +57,7 @@ function resolveApplicationProjectKey(
   }
 
   const keys = Object.keys(projects);
-  return keys.length > 0 ? keys[0]! : null;
+  return keys[0] ?? null;
 }
 
 export type PatchAngularJsonResult =
@@ -66,7 +66,7 @@ export type PatchAngularJsonResult =
 
 /** Idempotent patch: ensure production build replaces environment.ts with environment.prod.ts. */
 export async function patchAngularJsonFileReplacements(
-  cwd: string
+  cwd: string,
 ): Promise<PatchAngularJsonResult> {
   const angularJsonPath = path.join(cwd, "angular.json");
   if (!(await fse.pathExists(angularJsonPath))) {
@@ -100,8 +100,10 @@ export async function patchAngularJsonFileReplacements(
     build.configurations = {};
   }
 
-  const configurations =
-    build.configurations as Record<string, Record<string, unknown>>;
+  const configurations = build.configurations as Record<
+    string,
+    Record<string, unknown>
+  >;
 
   const production = configurations.production;
   if (!production || typeof production !== "object") {
@@ -131,7 +133,7 @@ export async function patchAngularJsonFileReplacements(
     return { ok: true, mutated: false };
   }
 
-  const newContent = JSON.stringify(root, null, 2) + "\n";
+  const newContent = `${JSON.stringify(root, null, 2)}\n`;
   await fse.writeFile(angularJsonPath, newContent, "utf8");
   return { ok: true, mutated: true };
 }

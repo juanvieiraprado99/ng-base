@@ -1,83 +1,154 @@
-import { Command } from "commander";
 import { createRequire } from "node:module";
+import { Command } from "commander";
+import pc from "picocolors";
 import { runAdd } from "./commands/add.js";
+import { runDoctor } from "./commands/doctor.js";
 import { runInit } from "./commands/init.js";
 import { runList } from "./commands/list.js";
+import { runRemove } from "./commands/remove.js";
 import { runUpdate } from "./commands/update.js";
-import type { AddType } from "./lib/naming.js";
+import type { ComponentStyle } from "./lib/artifact-plan.js";
+import { ADD_TYPES, type AddType } from "./lib/naming.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
+
+async function run(fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(pc.red(`\nError: ${message}`));
+    process.exitCode = 1;
+  }
+}
 
 const program = new Command();
 
 program
   .name("ngx-base-cli")
   .description(
-    "CLI to scaffold BaseService, CacheService, and HTTP artifacts in Angular projects"
+    "CLI to scaffold BaseService, CacheService, and HTTP artifacts in Angular projects",
   )
   .version(version);
 
 program
   .command("init")
   .description(
-    "Generate base/cache services, models, and optional interceptors in the project"
+    "Generate base/cache services, models, and optional interceptors in the project",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .option("-y, --yes", "Skip interactive prompts — select a preset instead")
   .option("--dry-run", "Show what would be generated without writing files")
-  .action(async (opts: { cwd?: string; yes?: boolean; dryRun?: boolean }) => {
-    await runInit(
-      opts.cwd ?? process.cwd(),
-      opts.yes ?? false,
-      opts.dryRun ?? false
-    );
-  });
+  .action((opts: { cwd?: string; yes?: boolean; dryRun?: boolean }) =>
+    run(() =>
+      runInit(
+        opts.cwd ?? process.cwd(),
+        opts.yes ?? false,
+        opts.dryRun ?? false,
+      ),
+    ),
+  );
 
 program
   .command("add")
   .description(
-    "Generate a feature artifact (service|component|guard|resolver) under <outputDir>/"
+    `Generate a feature artifact (${ADD_TYPES.join("|")}) under <outputDir>/`,
   )
   .argument("<name>", "feature name (e.g. user, user-profile)")
   .option(
     "-t, --type <type>",
-    "artifact type: service | component | guard | resolver",
-    "service"
+    `artifact type: ${ADD_TYPES.join(" | ")}`,
+    "service",
+  )
+  .option(
+    "--inline-template",
+    "(component) inline template instead of a separate .html file",
+  )
+  .option("--style <ext>", "(component) stylesheet: scss | css | none", "scss")
+  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
+  .action(
+    (
+      name: string,
+      opts: {
+        cwd?: string;
+        type?: string;
+        inlineTemplate?: boolean;
+        style?: string;
+      },
+    ) =>
+      run(() =>
+        runAdd(
+          name,
+          (opts.type ?? "service") as AddType,
+          opts.cwd ?? process.cwd(),
+          {
+            inlineTemplate: opts.inlineTemplate ?? false,
+            style: (opts.style ?? "scss") as ComponentStyle,
+          },
+        ),
+      ),
+  );
+
+program
+  .command("remove")
+  .alias("rm")
+  .description(
+    `Delete a generated artifact (${ADD_TYPES.join("|")}) and its manifest entries`,
+  )
+  .argument("<name>", "feature name (e.g. user, user-profile)")
+  .option(
+    "-t, --type <type>",
+    `artifact type: ${ADD_TYPES.join(" | ")}`,
+    "service",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action(async (name: string, opts: { cwd?: string; type?: string }) => {
-    await runAdd(
-      name,
-      (opts.type ?? "service") as AddType,
-      opts.cwd ?? process.cwd()
-    );
-  });
+  .action((name: string, opts: { cwd?: string; type?: string }) =>
+    run(() =>
+      runRemove(
+        name,
+        (opts.type ?? "service") as AddType,
+        opts.cwd ?? process.cwd(),
+      ),
+    ),
+  );
 
 program
   .command("update")
   .description(
-    "Regenerate init-generated files from .ngx-base-cli.json (shows diff)"
+    "Regenerate init-generated files from .ngx-base-cli.json (shows diff)",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .option("-y, --yes", "Apply all updates without prompts")
   .option("-f, --force", "Also overwrite files with local edits")
-  .action(async (opts: { cwd?: string; yes?: boolean; force?: boolean }) => {
-    await runUpdate(
-      opts.cwd ?? process.cwd(),
-      opts.yes ?? false,
-      opts.force ?? false
-    );
-  });
+  .action((opts: { cwd?: string; yes?: boolean; force?: boolean }) =>
+    run(() =>
+      runUpdate(
+        opts.cwd ?? process.cwd(),
+        opts.yes ?? false,
+        opts.force ?? false,
+      ),
+    ),
+  );
 
 program
   .command("list")
   .description(
-    "Show sync status of each generated file (in-sync/out-of-date/locally-edited/absent)"
+    "Show sync status of each generated file (in-sync/out-of-date/locally-edited/absent)",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action(async (opts: { cwd?: string }) => {
-    await runList(opts.cwd ?? process.cwd());
-  });
+  .action((opts: { cwd?: string }) =>
+    run(() => runList(opts.cwd ?? process.cwd())),
+  );
+
+program
+  .command("doctor")
+  .description(
+    "Validate post-init setup (base files, aliases, providers, auth token)",
+  )
+  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
+  .action((opts: { cwd?: string }) =>
+    run(() => runDoctor(opts.cwd ?? process.cwd())),
+  );
 
 program.parse();

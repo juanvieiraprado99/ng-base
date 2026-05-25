@@ -1,7 +1,7 @@
+import path from "node:path";
 import * as p from "@clack/prompts";
 import { diffLines } from "diff";
 import fse from "fs-extra";
-import path from "node:path";
 import pc from "picocolors";
 import { readNgxBaseConfig } from "../lib/config.js";
 import {
@@ -10,11 +10,11 @@ import {
 } from "../lib/generate-plan.js";
 import {
   classifyTarget,
+  type Manifest,
   manifestKey,
   readManifest,
   sha256,
   writeManifest,
-  type Manifest,
 } from "../lib/manifest.js";
 import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
 import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
@@ -27,11 +27,11 @@ function formatDiff(oldContent: string, newContent: string): string {
     const lines = part.value.replace(/\n$/, "").split("\n");
     for (const line of lines) {
       if (part.added) {
-        out += pc.green("+ " + line) + "\n";
+        out += `${pc.green(`+ ${line}`)}\n`;
       } else if (part.removed) {
-        out += pc.red("- " + line) + "\n";
+        out += `${pc.red(`- ${line}`)}\n`;
       } else {
-        out += "  " + line + "\n";
+        out += `  ${line}\n`;
       }
     }
   }
@@ -50,14 +50,14 @@ type PendingChange = {
 export async function runUpdate(
   cwd: string = process.cwd(),
   yes = false,
-  force = false
+  force = false,
 ): Promise<void> {
   p.intro(pc.inverse(" ngx-base-cli update "));
 
   const config = await readNgxBaseConfig(cwd);
   if (!config) {
     p.outro(
-      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first.")
+      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
     );
     process.exitCode = 1;
     return;
@@ -67,16 +67,33 @@ export async function runUpdate(
   const oldManifest = await readManifest(cwd);
   const newManifest: Manifest = { version: 1, files: {} };
   const pending: PendingChange[] = [];
+  let wroteAnything = false;
 
   for (const t of targets) {
     const rel = path.relative(cwd, t.outPath);
     const key = manifestKey(cwd, t.outPath);
+
+    if (t.dirOnly) {
+      if (!(await fse.pathExists(t.outPath))) {
+        await fse.ensureDir(t.outPath);
+        wroteAnything = true;
+        p.log.success(pc.green(`Created: ${rel}`));
+      } else {
+        p.log.info(`No changes: ${rel}`);
+      }
+      continue;
+    }
+
     const newContent = await renderGenerationTarget(t);
 
     if (!(await fse.pathExists(t.outPath))) {
       await fse.mkdir(path.dirname(t.outPath), { recursive: true });
       await fse.outputFile(t.outPath, newContent, "utf8");
-      newManifest.files[key] = { hash: sha256(newContent), template: t.template };
+      newManifest.files[key] = {
+        hash: sha256(newContent),
+        template: t.template,
+      };
+      wroteAnything = true;
       p.log.success(pc.green(`Created: ${rel}`));
       continue;
     }
@@ -85,12 +102,15 @@ export async function runUpdate(
     const status = classifyTarget(
       oldContent,
       newContent,
-      oldManifest.files[key]?.hash
+      oldManifest.files[key]?.hash,
     );
 
     if (status === "in-sync") {
       p.log.info(`No changes: ${rel}`);
-      newManifest.files[key] = { hash: sha256(newContent), template: t.template };
+      newManifest.files[key] = {
+        hash: sha256(newContent),
+        template: t.template,
+      };
       continue;
     }
 
@@ -120,8 +140,8 @@ export async function runUpdate(
     if (editedCount > 0 && !force) {
       p.log.warn(
         pc.yellow(
-          `${editedCount} file(s) have local edits and will be kept. Re-run with --force to overwrite them.`
-        )
+          `${editedCount} file(s) have local edits and will be kept. Re-run with --force to overwrite them.`,
+        ),
       );
     }
 
@@ -145,6 +165,7 @@ export async function runUpdate(
       if (willWrite) {
         await fse.outputFile(c.target.outPath, c.newContent, "utf8");
         applied.add(c.key);
+        wroteAnything = true;
         p.log.success(pc.green(`Updated: ${c.rel}`));
       } else {
         p.log.info(`Kept: ${c.rel}`);
@@ -155,21 +176,27 @@ export async function runUpdate(
   // Refresh manifest hashes: applied files get the new hash; kept files retain
   // their previous record so they keep classifying as locally-edited.
   for (const c of pending) {
+    const previous = oldManifest.files[c.key];
     if (applied.has(c.key)) {
       newManifest.files[c.key] = {
         hash: sha256(c.newContent),
         template: c.target.template,
       };
-    } else if (oldManifest.files[c.key]) {
-      newManifest.files[c.key] = oldManifest.files[c.key]!;
+    } else if (previous) {
+      newManifest.files[c.key] = previous;
     }
   }
   await writeManifest(cwd, newManifest);
 
-  if (await fse.pathExists(path.join(cwd, "angular.json"))) {
-    await patchAngularJsonFileReplacements(cwd);
+  // Only touch angular.json / app.config when we actually wrote files, or when
+  // everything was already in sync (idempotent maintenance). If the user
+  // declined to overwrite pending changes, leave their project untouched.
+  if (wroteAnything || pending.length === 0) {
+    if (await fse.pathExists(path.join(cwd, "angular.json"))) {
+      await patchAngularJsonFileReplacements(cwd);
+    }
+    await patchAppConfigForHttp(cwd, config);
   }
-  await patchAppConfigForHttp(cwd, config);
 
   p.outro(pc.green("ngx-base-cli update finished."));
 }

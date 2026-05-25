@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { camelName, kebabName, pascalName, symbolName } from "../src/lib/naming";
+import {
+  camelName,
+  kebabName,
+  pascalName,
+  symbolName,
+} from "../src/lib/naming";
 
 describe("name transforms", () => {
   it("kebabName", () => {
@@ -27,5 +32,14 @@ describe("symbolName", () => {
   });
   it("falls back to Feature for empty-ish input", () => {
     expect(symbolName("---", "service")).toBe("FeatureService");
+  });
+  it("class suffix for pipe/directive/store", () => {
+    expect(symbolName("user", "pipe")).toBe("UserPipe");
+    expect(symbolName("highlight", "directive")).toBe("HighlightDirective");
+    expect(symbolName("cart", "store")).toBe("CartStore");
+  });
+  it("no suffix for interface/enum", () => {
+    expect(symbolName("user-profile", "interface")).toBe("UserProfile");
+    expect(symbolName("order-status", "enum")).toBe("OrderStatus");
   });
 });

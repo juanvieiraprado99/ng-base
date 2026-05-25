@@ -17,7 +17,7 @@ describe("classifyTarget", () => {
 
   it("edited when disk differs from last CLI-written hash", () => {
     expect(
-      classifyTarget("user changed", "new generated", sha256("old generated"))
+      classifyTarget("user changed", "new generated", sha256("old generated")),
     ).toBe("edited");
   });
 
