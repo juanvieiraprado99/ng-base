@@ -154,3 +154,21 @@ describe("runEject --list", () => {
     ).toMatchObject({ ejected: true, stale: true });
   });
 });
+
+describe("runEject --diff", () => {
+  it("errors when the template is not ejected", async () => {
+    await runEject([], dir, { diff: "feature.guard" });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("succeeds for an ejected template", async () => {
+    await runEject(["feature.guard"], dir, {});
+    await fse.outputFile(
+      overridePath("feature.guard.ts.tpl"),
+      "// our own guard\n",
+    );
+
+    await runEject([], dir, { diff: "feature.guard" });
+    expect(process.exitCode).toBe(0);
+  });
+});

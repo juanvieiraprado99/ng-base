@@ -182,15 +182,17 @@ program
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .option("-f, --force", "Overwrite an override that already exists")
   .option("-l, --list", "Show which templates are ejected and which are stale")
+  .option("-d, --diff <name>", "Diff an ejected template against the built-in")
   .action(
     (
       names: string[],
-      opts: { cwd?: string; force?: boolean; list?: boolean },
+      opts: { cwd?: string; force?: boolean; list?: boolean; diff?: string },
     ) =>
       run(() =>
         runEject(names, opts.cwd ?? process.cwd(), {
           force: opts.force ?? false,
           list: opts.list ?? false,
+          diff: opts.diff,
         }),
       ),
   );

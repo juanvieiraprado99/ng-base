@@ -2,6 +2,7 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
+import { formatDiff } from "../lib/diff.js";
 import { sha256 } from "../lib/manifest.js";
 import {
   builtInTemplatesDir,
@@ -31,6 +32,11 @@ export async function runEject(
 
   if (opts.list) {
     await printTemplateList(cwd);
+    return;
+  }
+
+  if (opts.diff) {
+    await printTemplateDiff(cwd, opts.diff);
     return;
   }
 
@@ -122,4 +128,48 @@ async function printTemplateList(cwd: string): Promise<void> {
     parts.push(pc.yellow(`${stale} behind the built-in`));
   }
   p.outro(parts.join(pc.dim(" · ")));
+}
+
+async function printTemplateDiff(cwd: string, input: string): Promise<void> {
+  const builtIn = await listBuiltInTemplates();
+  let name: string;
+  try {
+    name = resolveTemplateName(input, builtIn);
+  } catch (err) {
+    p.outro(pc.red(err instanceof Error ? err.message : String(err)));
+    process.exitCode = 1;
+    return;
+  }
+
+  const overridePath = path.join(overrideTemplatesDir(cwd), name);
+  if (!(await fse.pathExists(overridePath))) {
+    p.outro(
+      pc.red(
+        `"${name}" is not ejected — there is nothing to compare. Run \`ngx-base-cli eject ${input}\` first.`,
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const override = await fse.readFile(overridePath, "utf8");
+  const current = await fse.readFile(
+    path.join(builtInTemplatesDir(), name),
+    "utf8",
+  );
+
+  if (override === current) {
+    p.outro(pc.green(`${name} is identical to the built-in template.`));
+    return;
+  }
+
+  p.log.message(
+    `${pc.bold(name)} ${pc.dim("(- your copy, + current built-in)")}`,
+  );
+  console.log(formatDiff(override, current));
+  p.outro(
+    pc.dim(
+      "Merge anything you want from the built-in into your copy by hand, then re-run `ngx-base-cli update`.",
+    ),
+  );
 }

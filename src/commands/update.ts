@@ -1,9 +1,9 @@
 import path from "node:path";
 import * as p from "@clack/prompts";
-import { diffLines } from "diff";
 import fse from "fs-extra";
 import pc from "picocolors";
 import { readNgxBaseConfig } from "../lib/config.js";
+import { formatDiff } from "../lib/diff.js";
 import {
   buildGenerationTargets,
   type GenerationTarget,
@@ -19,24 +19,6 @@ import {
 import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
 import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
 import { renderGenerationTarget } from "../lib/render-target.js";
-
-function formatDiff(oldContent: string, newContent: string): string {
-  const parts = diffLines(oldContent, newContent);
-  let out = "";
-  for (const part of parts) {
-    const lines = part.value.replace(/\n$/, "").split("\n");
-    for (const line of lines) {
-      if (part.added) {
-        out += `${pc.green(`+ ${line}`)}\n`;
-      } else if (part.removed) {
-        out += `${pc.red(`- ${line}`)}\n`;
-      } else {
-        out += `  ${line}\n`;
-      }
-    }
-  }
-  return out.trimEnd();
-}
 
 type PendingChange = {
   target: GenerationTarget;
