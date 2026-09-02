@@ -103,7 +103,7 @@ export async function runAdd(
   const manifest = await readManifest(cwd);
   for (const f of files) {
     await fse.mkdir(path.dirname(f.outPath), { recursive: true });
-    const content = await applyTemplate(f.template, f.vars);
+    const content = await applyTemplate(f.template, f.vars, cwd);
     await fse.outputFile(f.outPath, content, "utf8");
     manifest.files[manifestKey(cwd, f.outPath)] = {
       hash: sha256(content),

@@ -1,29 +1,12 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import fse from "fs-extra";
-
-/**
- * `dist/templates` quando o bundle é `dist/index.js`; `src/templates` em dev com `tsx`.
- */
-export function getTemplatesDir(): string {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const colocated = path.join(here, "templates");
-  const srcSibling = path.resolve(here, "..", "templates");
-  if (existsSync(colocated)) {
-    return colocated;
-  }
-  if (existsSync(srcSibling)) {
-    return srcSibling;
-  }
-  return colocated;
-}
+import { resolveTemplatePath } from "./template-registry.js";
 
 export async function applyTemplate(
   filename: string,
   vars: Record<string, string>,
+  cwd: string,
 ): Promise<string> {
-  const tplPath = path.join(getTemplatesDir(), filename);
+  const tplPath = await resolveTemplatePath(filename, cwd);
   let content = await fse.readFile(tplPath, "utf8");
   for (const [key, value] of Object.entries(vars)) {
     content = content.replaceAll(`{{${key}}}`, value);

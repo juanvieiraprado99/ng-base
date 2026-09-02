@@ -65,7 +65,7 @@ export async function runList(
     }
 
     try {
-      const expected = await renderGenerationTarget(t);
+      const expected = await renderGenerationTarget(t, cwd);
       const disk = await fse.readFile(t.outPath, "utf8");
       const status = classifyTarget(disk, expected, manifest.files[key]?.hash);
       entries.push({ relPath, status });

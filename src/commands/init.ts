@@ -274,7 +274,7 @@ export async function runInit(
 
     await fse.mkdir(path.dirname(t.outPath), { recursive: true });
 
-    const content = await renderGenerationTarget(t);
+    const content = await renderGenerationTarget(t, cwd);
     const key = manifestKey(cwd, t.outPath);
     const exists = await fse.pathExists(t.outPath);
 

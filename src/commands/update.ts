@@ -84,7 +84,7 @@ export async function runUpdate(
       continue;
     }
 
-    const newContent = await renderGenerationTarget(t);
+    const newContent = await renderGenerationTarget(t, cwd);
 
     if (!(await fse.pathExists(t.outPath))) {
       await fse.mkdir(path.dirname(t.outPath), { recursive: true });
