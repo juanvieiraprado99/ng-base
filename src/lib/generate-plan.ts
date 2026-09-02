@@ -24,41 +24,6 @@ function cacheTemplateForEngine(engine: StorageEngine): string {
   }
 }
 
-function buildEnvironmentTsContent(
-  production: boolean,
-  baseApiUrl: string,
-): string {
-  return [
-    "export const environment = {",
-    `  production: ${production},`,
-    `  baseApiUrl: ${JSON.stringify(baseApiUrl)},`,
-    "} as const;",
-    "",
-  ].join("\n");
-}
-
-function buildBarrelContent(): string {
-  const lines = [
-    "export * from './cache.service';",
-    "export * from './base.service';",
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildAppRoutesContent(): string {
-  const lines = [
-    "import { Routes } from '@angular/router';",
-    "import { PRIVATE_ROUTES } from './routes/private.routes';",
-    "import { PUBLIC_ROUTES } from './routes/public.routes';",
-    "",
-    "export const routes: Routes = [",
-    "  ...PUBLIC_ROUTES,",
-    "  ...PRIVATE_ROUTES,",
-    "];",
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
 export function buildGenerationTargets(
   cwd: string,
   config: NgxBaseCliConfig,
@@ -78,18 +43,22 @@ export function buildGenerationTargets(
   // The legacy (`prod`) style is the other way round.
   const replacement = envFileReplacement(config.environmentStyle);
   const isDevStyle = config.environmentStyle === "development";
+
+  const envVars = (production: boolean): Record<string, string> => ({
+    PRODUCTION: String(production),
+    BASE_API_URL: JSON.stringify(config.baseApiUrl),
+  });
+
   const envTargets: GenerationTarget[] = [
     {
       outPath: path.join(environmentsDir, "environment.ts"),
-      template: "",
-      vars: {},
-      rawContent: buildEnvironmentTsContent(isDevStyle, config.baseApiUrl),
+      template: "environment.ts.tpl",
+      vars: envVars(isDevStyle),
     },
     {
       outPath: path.join(cwd, replacement.with),
-      template: "",
-      vars: {},
-      rawContent: buildEnvironmentTsContent(!isDevStyle, config.baseApiUrl),
+      template: "environment.ts.tpl",
+      vars: envVars(!isDevStyle),
     },
   ];
 
@@ -140,9 +109,8 @@ export function buildGenerationTargets(
   if (config.generateBarrel) {
     targets.push({
       outPath: path.join(servicesDir, "index.ts"),
-      template: "",
+      template: "barrel.index.ts.tpl",
       vars: {},
-      rawContent: buildBarrelContent(),
     });
   }
 
@@ -288,9 +256,8 @@ export function buildGenerationTargets(
     targets.push(
       {
         outPath: path.join(appDir, "app.routes.ts"),
-        template: "",
+        template: "app.routes.ts.tpl",
         vars: {},
-        rawContent: buildAppRoutesContent(),
       },
       {
         outPath: path.join(appDir, "shared"),
@@ -300,9 +267,8 @@ export function buildGenerationTargets(
       },
       {
         outPath: path.join(appDir, "app.html"),
-        template: "",
+        template: "app.html.tpl",
         vars: {},
-        rawContent: "<router-outlet />\n",
       },
     );
   }
