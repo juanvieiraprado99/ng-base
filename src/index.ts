@@ -181,12 +181,18 @@ program
   .argument("[names...]", "template names, e.g. feature.service")
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .option("-f, --force", "Overwrite an override that already exists")
-  .action((names: string[], opts: { cwd?: string; force?: boolean }) =>
-    run(() =>
-      runEject(names, opts.cwd ?? process.cwd(), {
-        force: opts.force ?? false,
-      }),
-    ),
+  .option("-l, --list", "Show which templates are ejected and which are stale")
+  .action(
+    (
+      names: string[],
+      opts: { cwd?: string; force?: boolean; list?: boolean },
+    ) =>
+      run(() =>
+        runEject(names, opts.cwd ?? process.cwd(), {
+          force: opts.force ?? false,
+          list: opts.list ?? false,
+        }),
+      ),
   );
 
 program.parse();

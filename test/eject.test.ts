@@ -9,6 +9,7 @@ import {
   builtInTemplatesDir,
   overrideTemplatesDir,
   readEjectRegistry,
+  templateStatuses,
 } from "../src/lib/template-registry";
 
 let dir: string;
@@ -130,5 +131,26 @@ describe("an ejected template drives real generation", () => {
         "utf8",
       ),
     ).toContain("extends BaseService");
+  });
+});
+
+describe("runEject --list", () => {
+  it("does not require any names", async () => {
+    await runEject([], dir, { list: true });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("reports an ejected template as stale when the recorded hash is wrong", async () => {
+    await runEject(["feature.guard"], dir, {});
+
+    const registryPath = path.join(dir, ".ngx-base-cli", "templates.json");
+    const registry = await fse.readJson(registryPath);
+    registry.templates["feature.guard.ts.tpl"].builtInHash = "0".repeat(64);
+    await fse.writeJson(registryPath, registry, { spaces: 2 });
+
+    const statuses = await templateStatuses(dir);
+    expect(
+      statuses.find((s) => s.name === "feature.guard.ts.tpl"),
+    ).toMatchObject({ ejected: true, stale: true });
   });
 });
