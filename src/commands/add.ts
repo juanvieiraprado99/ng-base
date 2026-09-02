@@ -2,6 +2,7 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
+import { resolveCapabilities } from "../lib/angular-version.js";
 import {
   type AddOptions,
   COMPONENT_STYLES,
@@ -16,6 +17,7 @@ import {
 } from "../lib/manifest.js";
 import { ADD_TYPES, type AddType, kebabName } from "../lib/naming.js";
 import { applyTemplate } from "../lib/templates.js";
+import { detectSpecStyle } from "../lib/test-runner.js";
 
 export async function runAdd(
   featureName: string,
@@ -58,12 +60,25 @@ export async function runAdd(
     return;
   }
 
+  // Everything version-dependent comes from the config the project was
+  // initialised with, falling back to the Angular version on disk.
+  const caps = await resolveCapabilities(cwd, config.angularTarget);
+  const planOptions: AddOptions = {
+    ...opts,
+    fileNaming: config.fileNaming,
+    generateSpecs: config.generateSpecs && !opts.skipTests,
+    specStyle: await detectSpecStyle(cwd, caps),
+    onPushIsDefault: caps.onPushIsDefault,
+    serviceDecorator: caps.serviceDecorator,
+    signalFormsStable: caps.signalFormsStable,
+  };
+
   const plan = await planArtifactFiles(
     type,
     featureName,
     cwd,
     config.outputDir,
-    opts,
+    planOptions,
   );
   if (!plan.ok) {
     p.outro(pc.red(plan.error));

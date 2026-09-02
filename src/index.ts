@@ -9,6 +9,7 @@ import { runRemove } from "./commands/remove.js";
 import { runUpdate } from "./commands/update.js";
 import type { ComponentStyle } from "./lib/artifact-plan.js";
 import { ADD_TYPES, type AddType } from "./lib/naming.js";
+import type { PresetName } from "./lib/presets.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -40,14 +41,27 @@ program
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .option("-y, --yes", "Skip interactive prompts — select a preset instead")
   .option("--dry-run", "Show what would be generated without writing files")
-  .action((opts: { cwd?: string; yes?: boolean; dryRun?: boolean }) =>
-    run(() =>
-      runInit(
-        opts.cwd ?? process.cwd(),
-        opts.yes ?? false,
-        opts.dryRun ?? false,
+  .option("--skip-tests", "Do not generate .spec.ts files for added artifacts")
+  .option(
+    "--preset <name>",
+    "Use a preset without prompting: minimal | standard | full",
+  )
+  .action(
+    (opts: {
+      cwd?: string;
+      yes?: boolean;
+      dryRun?: boolean;
+      skipTests?: boolean;
+      preset?: string;
+    }) =>
+      run(() =>
+        runInit(opts.cwd ?? process.cwd(), {
+          yes: opts.yes ?? false,
+          dryRun: opts.dryRun ?? false,
+          skipTests: opts.skipTests ?? false,
+          preset: opts.preset as PresetName | undefined,
+        }),
       ),
-    ),
   );
 
 program
@@ -66,6 +80,7 @@ program
     "(component) inline template instead of a separate .html file",
   )
   .option("--style <ext>", "(component) stylesheet: scss | css | none", "scss")
+  .option("--skip-tests", "Do not generate the companion .spec.ts file")
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .action(
     (
@@ -75,6 +90,7 @@ program
         type?: string;
         inlineTemplate?: boolean;
         style?: string;
+        skipTests?: boolean;
       },
     ) =>
       run(() =>
@@ -85,6 +101,7 @@ program
           {
             inlineTemplate: opts.inlineTemplate ?? false,
             style: (opts.style ?? "scss") as ComponentStyle,
+            skipTests: opts.skipTests ?? false,
           },
         ),
       ),
@@ -137,8 +154,12 @@ program
     "Show sync status of each generated file (in-sync/out-of-date/locally-edited/absent)",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action((opts: { cwd?: string }) =>
-    run(() => runList(opts.cwd ?? process.cwd())),
+  .option(
+    "--check",
+    "Exit with code 1 when files are absent or out of date (for CI)",
+  )
+  .action((opts: { cwd?: string; check?: boolean }) =>
+    run(() => runList(opts.cwd ?? process.cwd(), opts.check ?? false)),
   );
 
 program

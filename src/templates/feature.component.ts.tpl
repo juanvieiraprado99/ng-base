@@ -1,7 +1,6 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { {{CHANGE_DETECTION_IMPORT}}Component } from '@angular/core';
 
 @Component({
   selector: '{{SELECTOR}}',
-{{TEMPLATE_FIELD}}{{STYLE_FIELD}}  changeDetection: ChangeDetectionStrategy.OnPush,
-})
+{{TEMPLATE_FIELD}}{{STYLE_FIELD}}{{CHANGE_DETECTION_FIELD}}})
 export class {{CLASS_NAME}} {}

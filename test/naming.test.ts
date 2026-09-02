@@ -8,16 +8,22 @@ import {
 
 describe("name transforms", () => {
   it("kebabName", () => {
-    expect(kebabName("UserProfile")).toBe("userprofile");
+    expect(kebabName("UserProfile")).toBe("user-profile");
     expect(kebabName("user profile")).toBe("user-profile");
     expect(kebabName("  --user--  ")).toBe("user");
+    expect(kebabName("user_profile")).toBe("user-profile");
+    expect(kebabName("APIKey")).toBe("api-key");
+    expect(kebabName("userAPI")).toBe("user-api");
   });
   it("pascalName", () => {
     expect(pascalName("user-profile")).toBe("UserProfile");
     expect(pascalName("user_profile")).toBe("UserProfile");
+    expect(pascalName("userProfile")).toBe("UserProfile");
+    expect(pascalName("APIKey")).toBe("ApiKey");
   });
   it("camelName", () => {
     expect(camelName("user-profile")).toBe("userProfile");
+    expect(camelName("UserProfile")).toBe("userProfile");
   });
 });
 

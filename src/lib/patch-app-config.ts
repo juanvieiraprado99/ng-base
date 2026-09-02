@@ -184,6 +184,13 @@ export async function patchAppConfigForHttp(
   const sf = project.createSourceFile("app.config.ts", content);
   const before = sf.getFullText();
 
+  // Without a `providers` array there is nothing to wire up; bail out before
+  // adding imports that would end up unused.
+  const providers = findProvidersArray(sf);
+  if (!providers) {
+    return { patched: false, appConfigExists: true };
+  }
+
   const ixNeeded = needsInterceptors(config);
   const ixNames = interceptorBindingNames(config);
   const withInterceptorsAlreadyPresent =
@@ -235,19 +242,16 @@ export async function patchAppConfigForHttp(
     ]);
   }
 
-  const providers = findProvidersArray(sf);
-  if (providers) {
-    if (ixNeeded) {
-      ensureNamedImports(sf, HTTP_MODULE, [
-        "provideHttpClient",
-        "withInterceptors",
-      ]);
-      patchProvideHttpClient(providers, ixNames);
-    } else if (findCallElement(providers, "provideHttpClient")) {
-      ensureNamedImports(sf, HTTP_MODULE, ["provideHttpClient"]);
-    }
-    patchBaseApiProvider(providers);
+  if (ixNeeded) {
+    ensureNamedImports(sf, HTTP_MODULE, [
+      "provideHttpClient",
+      "withInterceptors",
+    ]);
+    patchProvideHttpClient(providers, ixNames);
+  } else if (findCallElement(providers, "provideHttpClient")) {
+    ensureNamedImports(sf, HTTP_MODULE, ["provideHttpClient"]);
   }
+  patchBaseApiProvider(providers);
 
   const after = sf.getFullText();
   if (after === before) {

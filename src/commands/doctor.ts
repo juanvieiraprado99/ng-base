@@ -2,9 +2,14 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
+import {
+  readAngularVersion,
+  resolveCapabilities,
+} from "../lib/angular-version.js";
 import type { NgxBaseCliConfig } from "../lib/config.js";
 import { readNgxBaseConfig } from "../lib/config.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
+import { envFileReplacement } from "../lib/patch-angular-json.js";
 
 type Level = "ok" | "warn" | "error";
 
@@ -34,8 +39,9 @@ export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
 
   const checks: Check[] = [];
 
+  await checkAngularVersion(checks, cwd, config);
   await checkBaseFiles(checks, cwd, config);
-  await checkEnvironments(checks, cwd);
+  await checkEnvironments(checks, cwd, config);
   await checkAliases(checks, cwd, config);
   await checkAppConfig(checks, cwd, config);
   await checkAuthToken(checks, cwd, config);
@@ -87,16 +93,73 @@ async function checkBaseFiles(
   }
 }
 
-async function checkEnvironments(checks: Check[], cwd: string): Promise<void> {
-  for (const file of ["environment.ts", "environment.prod.ts"]) {
-    const exists = await fse.pathExists(
-      path.join(cwd, "src/environments", file),
-    );
+async function checkEnvironments(
+  checks: Check[],
+  cwd: string,
+  config: NgxBaseCliConfig,
+): Promise<void> {
+  const replacement = envFileReplacement(config.environmentStyle);
+  const files = ["src/environments/environment.ts", replacement.with];
+  for (const file of files) {
+    const exists = await fse.pathExists(path.join(cwd, file));
     checks.push({
       level: exists ? "ok" : "warn",
-      label: `environments/${file}`,
+      label: file.replace("src/", ""),
       detail: exists ? undefined : "Missing — run `ngx-base-cli init`.",
     });
+  }
+}
+
+async function checkAngularVersion(
+  checks: Check[],
+  cwd: string,
+  config: NgxBaseCliConfig,
+): Promise<void> {
+  const installed = await readAngularVersion(cwd);
+  const caps = await resolveCapabilities(cwd, config.angularTarget);
+  const installedMajor = installed
+    ? Number.parseInt(installed.split(".")[0], 10)
+    : 0;
+
+  if (!installed) {
+    checks.push({
+      level: "warn",
+      label: "Angular version",
+      detail:
+        "Could not read @angular/core from package.json — generated code assumes the oldest supported APIs.",
+    });
+  } else if (config.angularTarget === 0) {
+    checks.push({
+      level: "warn",
+      label: "Angular version",
+      detail: `Installed v${installed}, but .ngx-base-cli.json predates version tracking. Run 'ngx-base-cli update' to regenerate against this version.`,
+    });
+  } else if (installedMajor !== config.angularTarget) {
+    checks.push({
+      level: "warn",
+      label: "Angular version",
+      detail: `Installed v${installed} but files were generated for v${config.angularTarget}. Set "angularTarget": ${installedMajor} in .ngx-base-cli.json and run 'ngx-base-cli update'.`,
+    });
+  } else {
+    checks.push({
+      level: "ok",
+      label: "Angular version",
+      detail: `v${installed} — httpResource ${caps.httpResourceStable ? "stable" : caps.httpResourceAvailable ? "experimental" : "unavailable"}, OnPush ${caps.onPushIsDefault ? "default" : "explicit"}, specs ${caps.vitestDefault ? "Vitest" : "Jasmine"}`,
+    });
+  }
+
+  // Angular 21 made zoneless the default; an explicit opt-out is worth flagging.
+  const appConfigPath = path.join(cwd, "src/app/app.config.ts");
+  if (caps.zonelessDefault && (await fse.pathExists(appConfigPath))) {
+    const content = await fse.readFile(appConfigPath, "utf8");
+    if (content.includes("provideZoneChangeDetection")) {
+      checks.push({
+        level: "warn",
+        label: "zoneless change detection",
+        detail:
+          "provideZoneChangeDetection() opts back into Zone.js, which Angular 21+ no longer uses by default.",
+      });
+    }
   }
 }
 

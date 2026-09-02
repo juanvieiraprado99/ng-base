@@ -1,9 +1,34 @@
 import path from "node:path";
 import fse from "fs-extra";
+import type { EnvironmentStyle } from "./config.js";
 import { parseJsonWithComments } from "./parse-jsonc.js";
+import { editJsonText, type JsonEdit } from "./patch-json.js";
 
-const ENV_REPLACE = "src/environments/environment.ts";
-const ENV_WITH = "src/environments/environment.prod.ts";
+export interface EnvFileReplacement {
+  /** `angular.json` build configuration that gets the entry. */
+  configuration: string;
+  replace: string;
+  with: string;
+}
+
+const ENV_DIR = "src/environments";
+
+/** The `fileReplacements` entry implied by a config's `environmentStyle`. */
+export function envFileReplacement(
+  style: EnvironmentStyle,
+): EnvFileReplacement {
+  return style === "development"
+    ? {
+        configuration: "development",
+        replace: `${ENV_DIR}/environment.ts`,
+        with: `${ENV_DIR}/environment.development.ts`,
+      }
+    : {
+        configuration: "production",
+        replace: `${ENV_DIR}/environment.ts`,
+        with: `${ENV_DIR}/environment.prod.ts`,
+      };
+}
 
 function normalizeConfigPath(p: string): string {
   return p.replace(/\\/g, "/");
@@ -26,15 +51,27 @@ function fileReplacementEntryExists(
   );
 }
 
+/** `architect` (classic) or `targets` (workspace v2) — whichever this project uses. */
+function buildSectionKey(
+  project: Record<string, unknown>,
+): "architect" | "targets" | null {
+  for (const key of ["architect", "targets"] as const) {
+    const section = project[key] as Record<string, unknown> | undefined;
+    const build = section?.build;
+    if (build && typeof build === "object") return key;
+  }
+  return null;
+}
+
 function getBuildSection(
   project: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  const architect = project.architect as Record<string, unknown> | undefined;
-  const targets = project.targets as Record<string, unknown> | undefined;
-  const build =
-    (architect?.build as Record<string, unknown> | undefined) ??
-    (targets?.build as Record<string, unknown> | undefined);
-  return build && typeof build === "object" ? build : undefined;
+  const key = buildSectionKey(project);
+  if (!key) return undefined;
+  return (project[key] as Record<string, unknown>).build as Record<
+    string,
+    unknown
+  >;
 }
 
 function resolveApplicationProjectKey(
@@ -64,9 +101,16 @@ export type PatchAngularJsonResult =
   | { ok: true; mutated: boolean }
   | { ok: false };
 
-/** Idempotent patch: ensure production build replaces environment.ts with environment.prod.ts. */
+/**
+ * Idempotent patch: ensure the target build configuration replaces
+ * `environment.ts` with its environment-specific counterpart.
+ *
+ * Edits are applied with `jsonc-parser` so comments, key order and the file's
+ * own indentation survive — a full re-serialize would strip all of them.
+ */
 export async function patchAngularJsonFileReplacements(
   cwd: string,
+  style: EnvironmentStyle = "prod",
 ): Promise<PatchAngularJsonResult> {
   const angularJsonPath = path.join(cwd, "angular.json");
   if (!(await fse.pathExists(angularJsonPath))) {
@@ -80,60 +124,68 @@ export async function patchAngularJsonFileReplacements(
   } catch {
     return { ok: false };
   }
+  if (!root || typeof root !== "object") return { ok: false };
 
   const projectKey = resolveApplicationProjectKey(root);
   if (!projectKey) return { ok: false };
 
-  const project = root.projects as Record<string, unknown> | undefined;
+  const projects = root.projects as Record<string, unknown> | undefined;
   const proj =
-    project && typeof project === "object"
-      ? (project[projectKey] as Record<string, unknown> | undefined)
+    projects && typeof projects === "object"
+      ? (projects[projectKey] as Record<string, unknown> | undefined)
       : undefined;
   if (!proj) return { ok: false };
 
+  const sectionKey = buildSectionKey(proj);
   const build = getBuildSection(proj);
-  if (!build) return { ok: false };
+  if (!sectionKey || !build) return { ok: false };
 
-  let mutated = false;
+  const target = envFileReplacement(style);
+  const entry = { replace: target.replace, with: target.with };
 
-  if (!build.configurations || typeof build.configurations !== "object") {
-    build.configurations = {};
+  const buildPath = ["projects", projectKey, sectionKey, "build"];
+  const configPath = [...buildPath, "configurations", target.configuration];
+  const replacementsPath = [...configPath, "fileReplacements"];
+
+  const configurations = build.configurations as
+    | Record<string, unknown>
+    | undefined;
+  const configuration =
+    configurations && typeof configurations === "object"
+      ? (configurations[target.configuration] as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+
+  const edits: JsonEdit[] = [];
+
+  if (!configurations || typeof configurations !== "object") {
+    edits.push({
+      path: [...buildPath, "configurations"],
+      value: { [target.configuration]: { fileReplacements: [entry] } },
+    });
+  } else if (!configuration || typeof configuration !== "object") {
+    edits.push({ path: configPath, value: { fileReplacements: [entry] } });
+  } else if (!Array.isArray(configuration.fileReplacements)) {
+    edits.push({ path: replacementsPath, value: [entry] });
+  } else if (
+    !fileReplacementEntryExists(
+      configuration.fileReplacements,
+      target.replace,
+      target.with,
+    )
+  ) {
+    edits.push({
+      path: [...replacementsPath, configuration.fileReplacements.length],
+      value: entry,
+      isArrayInsertion: true,
+    });
   }
 
-  const configurations = build.configurations as Record<
-    string,
-    Record<string, unknown>
-  >;
-
-  const production = configurations.production;
-  if (!production || typeof production !== "object") {
-    configurations.production = {
-      fileReplacements: [{ replace: ENV_REPLACE, with: ENV_WITH }],
-    };
-    mutated = true;
-  } else if (!production.fileReplacements) {
-    production.fileReplacements = [{ replace: ENV_REPLACE, with: ENV_WITH }];
-    mutated = true;
-  } else {
-    if (!Array.isArray(production.fileReplacements)) {
-      production.fileReplacements = [];
-      mutated = true;
-    }
-    const fr = production.fileReplacements as Array<{
-      replace: string;
-      with: string;
-    }>;
-    if (!fileReplacementEntryExists(fr, ENV_REPLACE, ENV_WITH)) {
-      fr.push({ replace: ENV_REPLACE, with: ENV_WITH });
-      mutated = true;
-    }
-  }
-
-  if (!mutated) {
+  if (edits.length === 0) {
     return { ok: true, mutated: false };
   }
 
-  const newContent = `${JSON.stringify(root, null, 2)}\n`;
-  await fse.writeFile(angularJsonPath, newContent, "utf8");
+  await fse.writeFile(angularJsonPath, editJsonText(raw, edits), "utf8");
   return { ok: true, mutated: true };
 }

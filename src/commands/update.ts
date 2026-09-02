@@ -193,7 +193,7 @@ export async function runUpdate(
   // declined to overwrite pending changes, leave their project untouched.
   if (wroteAnything || pending.length === 0) {
     if (await fse.pathExists(path.join(cwd, "angular.json"))) {
-      await patchAngularJsonFileReplacements(cwd);
+      await patchAngularJsonFileReplacements(cwd, config.environmentStyle);
     }
     await patchAppConfigForHttp(cwd, config);
   }

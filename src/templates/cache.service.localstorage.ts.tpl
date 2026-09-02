@@ -1,79 +1,64 @@
-import { inject, Injectable, InjectionToken } from "@angular/core";
-import { CacheObject } from "{{IMPORT_CACHE_INTERFACE}}";
+import { inject, InjectionToken, {{SERVICE_DECORATOR_IMPORT}} } from '@angular/core';
+import { CacheEntry, CacheObject } from '{{IMPORT_CACHE_INTERFACE}}';
 
-export const BASE_API_URL = new InjectionToken<string>("BASE_API_URL");
+export const BASE_API_URL = new InjectionToken<string>('BASE_API_URL');
 
-const PARSED_IDENTIFIER = "%OBJECT%";
-
-@Injectable({
-  providedIn: "root",
-})
+/** Cache backed by `localStorage` — survives page reloads and browser restarts. */
+{{SERVICE_DECORATOR}}
 export class CacheService {
-  private readonly baseUrl = inject(BASE_API_URL, { optional: true }) ?? "";
-  private readonly storagePrefix = "ngx-base-cli:";
+  private readonly baseUrl = inject(BASE_API_URL, { optional: true }) ?? '';
+  private readonly storagePrefix = 'ngx-base-cli:';
 
-  set(endpoint: string, value: unknown, minutesToExpire: number = 10): void {
-    endpoint = endpoint.replace(this.baseUrl, "");
+  private key(endpoint: string): string {
+    const relative =
+      this.baseUrl && endpoint.startsWith(this.baseUrl)
+        ? endpoint.slice(this.baseUrl.length)
+        : endpoint;
+    return this.storagePrefix + relative;
+  }
 
-    const key = this.storagePrefix + btoa(endpoint);
-    const valueParsed =
-      typeof value === "string"
-        ? value
-        : JSON.stringify(value) + PARSED_IDENTIFIER;
-
+  set(endpoint: string, value: unknown, minutesToExpire = 10): void {
     const cacheObject: CacheObject = {
       endpoint,
-      value: valueParsed,
-      expires: this.getExpires(minutesToExpire),
+      value,
+      expires: Date.now() + 60_000 * minutesToExpire,
     };
-
     try {
-      const cacheObjectParsed = JSON.stringify(cacheObject);
-      const cacheObjectB64 = btoa(cacheObjectParsed);
-      localStorage.setItem(key, cacheObjectB64);
+      localStorage.setItem(this.key(endpoint), JSON.stringify(cacheObject));
     } catch {
-      // QuotaExceededError or encoding failure — silently ignored
+      // QuotaExceededError, blocked storage, or a non-serializable payload.
+      // Caching is best-effort, so a failed write is not an error.
     }
   }
 
-  private getExpires(minutesToExpire: number): number {
-    const now = new Date();
-    const minutesInMs = 60_000 * minutesToExpire;
-    return now.getTime() + minutesInMs;
-  }
-
-  get(endpoint: string): unknown | null {
-    endpoint = endpoint.replace(this.baseUrl, "");
-    const key = this.storagePrefix + btoa(endpoint);
-
-    const cacheObjectB64: string | null = localStorage.getItem(key);
-    if (!cacheObjectB64) return null;
+  /** `null` means "no usable entry"; a hit is wrapped so falsy values survive. */
+  get<T>(endpoint: string): CacheEntry<T> | null {
+    let raw: string | null;
+    try {
+      raw = localStorage.getItem(this.key(endpoint));
+    } catch {
+      return null;
+    }
+    if (raw === null) return null;
 
     try {
-      const cacheObjectDecoded = atob(cacheObjectB64);
-      const cacheObject = JSON.parse(cacheObjectDecoded) as CacheObject;
-
-      const now = new Date();
-      if (now.getTime() > cacheObject.expires) {
-        localStorage.removeItem(key);
+      const cacheObject = JSON.parse(raw) as CacheObject<T>;
+      if (Date.now() > cacheObject.expires) {
+        this.remove(endpoint);
         return null;
       }
-
-      if (cacheObject.value.includes(PARSED_IDENTIFIER)) {
-        const replaced = cacheObject.value.replace(PARSED_IDENTIFIER, "");
-        return JSON.parse(replaced) as unknown;
-      }
-
-      return cacheObject.value;
+      return { value: cacheObject.value };
     } catch {
-      localStorage.removeItem(key);
+      this.remove(endpoint);
       return null;
     }
   }
 
   remove(endpoint: string): void {
-    endpoint = endpoint.replace(this.baseUrl, "");
-    const key = this.storagePrefix + btoa(endpoint);
-    localStorage.removeItem(key);
+    try {
+      localStorage.removeItem(this.key(endpoint));
+    } catch {
+      // Storage unavailable — nothing to clean up.
+    }
   }
 }

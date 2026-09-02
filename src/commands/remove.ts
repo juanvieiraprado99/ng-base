@@ -2,7 +2,8 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
-import { planArtifactFiles } from "../lib/artifact-plan.js";
+import { artifactStem, planArtifactFiles } from "../lib/artifact-plan.js";
+import type { FileNaming } from "../lib/config.js";
 import { readNgxBaseConfig } from "../lib/config.js";
 import { manifestKey, readManifest, writeManifest } from "../lib/manifest.js";
 import { ADD_TYPES, type AddType, kebabName } from "../lib/naming.js";
@@ -43,7 +44,13 @@ export async function runRemove(
   const targets =
     type === "component"
       ? [path.join(cwd, config.outputDir, "components", kebab)]
-      : await resolveArtifactPaths(type, featureName, cwd, config.outputDir);
+      : await resolveArtifactPaths(
+          type,
+          featureName,
+          cwd,
+          config.outputDir,
+          config.fileNaming,
+        );
 
   if (targets === null) {
     p.outro(pc.red("Could not resolve target paths."));
@@ -97,20 +104,22 @@ async function resolveArtifactPaths(
   rawName: string,
   cwd: string,
   outputDir: string,
+  fileNaming: FileNaming,
 ): Promise<string[] | null> {
-  const plan = await planArtifactFiles(type, rawName, cwd, outputDir);
+  // Plan with specs on so a generated `.spec.ts` is removed alongside its
+  // artifact, and with Signal Forms allowed so `remove --type form` works
+  // regardless of the project's Angular version.
+  const plan = await planArtifactFiles(type, rawName, cwd, outputDir, {
+    fileNaming,
+    generateSpecs: true,
+    signalFormsStable: true,
+  });
   // `service` returns an error when base.service.ts is missing; for removal the
   // path is still deterministic, so fall back to the conventional location.
   if (!plan.ok) {
     if (type === "service") {
-      return [
-        path.join(
-          cwd,
-          outputDir,
-          "services",
-          `${kebabName(rawName)}.service.ts`,
-        ),
-      ];
+      const stem = artifactStem("service", kebabName(rawName), fileNaming);
+      return [path.join(cwd, outputDir, "services", `${stem}.ts`)];
     }
     return null;
   }

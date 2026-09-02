@@ -1,6 +1,6 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, {{SERVICE_DECORATOR_IMPORT}}, signal } from '@angular/core';
 
-@Injectable({ providedIn: 'root' })
+{{SERVICE_DECORATOR}}
 export class {{CLASS_NAME}} {
   private readonly _loading = signal(false);
 

@@ -1,83 +1,50 @@
-import { inject, Injectable, InjectionToken } from "@angular/core";
-import { CacheObject } from "{{IMPORT_CACHE_INTERFACE}}";
+import { inject, InjectionToken, {{SERVICE_DECORATOR_IMPORT}} } from '@angular/core';
+import { CacheEntry, CacheObject } from '{{IMPORT_CACHE_INTERFACE}}';
 
-export const BASE_API_URL = new InjectionToken<string>("BASE_API_URL");
-
-const PARSED_IDENTIFIER = "%OBJECT%";
+export const BASE_API_URL = new InjectionToken<string>('BASE_API_URL');
 
 /**
- * In-memory cache (Map). Volatile — useful in SSR/Node where Web Storage is unavailable.
+ * In-memory cache (Map). Volatile — the right choice under SSR/Node, where Web
+ * Storage does not exist and per-request isolation matters.
  */
-@Injectable({
-  providedIn: "root",
-})
+{{SERVICE_DECORATOR}}
 export class CacheService {
-  private readonly baseUrl = inject(BASE_API_URL, { optional: true }) ?? "";
-  private readonly storagePrefix = "ngx-base-cli:";
-  private readonly store = new Map<string, string>();
+  private readonly baseUrl = inject(BASE_API_URL, { optional: true }) ?? '';
+  private readonly store = new Map<string, CacheObject>();
 
-  set(endpoint: string, value: unknown, minutesToExpire: number = 10): void {
-    endpoint = endpoint.replace(this.baseUrl, "");
+  private key(endpoint: string): string {
+    return this.baseUrl && endpoint.startsWith(this.baseUrl)
+      ? endpoint.slice(this.baseUrl.length)
+      : endpoint;
+  }
 
-    const key = this.storagePrefix + btoa(endpoint);
-    const valueParsed =
-      typeof value === "string"
-        ? value
-        : JSON.stringify(value) + PARSED_IDENTIFIER;
-
-    const cacheObject: CacheObject = {
+  set(endpoint: string, value: unknown, minutesToExpire = 10): void {
+    this.store.set(this.key(endpoint), {
       endpoint,
-      value: valueParsed,
-      expires: this.getExpires(minutesToExpire),
-    };
-
-    try {
-      const cacheObjectParsed = JSON.stringify(cacheObject);
-      const cacheObjectB64 = btoa(cacheObjectParsed);
-      this.store.set(key, cacheObjectB64);
-    } catch {
-      // encoding failure — silently ignored
-    }
+      value,
+      expires: Date.now() + 60_000 * minutesToExpire,
+    });
   }
 
-  private getExpires(minutesToExpire: number): number {
-    const now = new Date();
-    const minutesInMs = 60_000 * minutesToExpire;
-    return now.getTime() + minutesInMs;
-  }
+  /** `null` means "no usable entry"; a hit is wrapped so falsy values survive. */
+  get<T>(endpoint: string): CacheEntry<T> | null {
+    const cacheObject = this.store.get(this.key(endpoint));
+    if (!cacheObject) return null;
 
-  get(endpoint: string): unknown | null {
-    endpoint = endpoint.replace(this.baseUrl, "");
-    const key = this.storagePrefix + btoa(endpoint);
-
-    const cacheObjectB64: string | undefined = this.store.get(key);
-    if (!cacheObjectB64) return null;
-
-    try {
-      const cacheObjectDecoded = atob(cacheObjectB64);
-      const cacheObject = JSON.parse(cacheObjectDecoded) as CacheObject;
-
-      const now = new Date();
-      if (now.getTime() > cacheObject.expires) {
-        this.store.delete(key);
-        return null;
-      }
-
-      if (cacheObject.value.includes(PARSED_IDENTIFIER)) {
-        const replaced = cacheObject.value.replace(PARSED_IDENTIFIER, "");
-        return JSON.parse(replaced) as unknown;
-      }
-
-      return cacheObject.value;
-    } catch {
-      this.store.delete(key);
+    if (Date.now() > cacheObject.expires) {
+      this.store.delete(this.key(endpoint));
       return null;
     }
+
+    return { value: cacheObject.value as T };
   }
 
   remove(endpoint: string): void {
-    endpoint = endpoint.replace(this.baseUrl, "");
-    const key = this.storagePrefix + btoa(endpoint);
-    this.store.delete(key);
+    this.store.delete(this.key(endpoint));
+  }
+
+  /** Drop every entry — useful between SSR requests. */
+  clear(): void {
+    this.store.clear();
   }
 }

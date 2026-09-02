@@ -1,5 +1,7 @@
 import path from "node:path";
+import { changeDetectionVars, serviceDecoratorVars } from "./artifact-plan.js";
 import type { NgxBaseCliConfig, StorageEngine } from "./config.js";
+import { envFileReplacement } from "./patch-angular-json.js";
 
 export interface GenerationTarget {
   outPath: string;
@@ -61,24 +63,33 @@ export function buildGenerationTargets(
   cwd: string,
   config: NgxBaseCliConfig,
 ): GenerationTarget[] {
+  const capabilityOptions = {
+    serviceDecorator: config.angularTarget >= 22,
+    onPushIsDefault: config.angularTarget >= 22,
+  };
   const outputDir = config.outputDir;
   const interfacesDir = path.join(cwd, outputDir, "interfaces");
   const servicesDir = path.join(cwd, outputDir, "services");
   const interceptorsDir = path.join(cwd, outputDir, "interceptors");
   const environmentsDir = path.join(cwd, "src/environments");
 
+  // With the modern (`development`) style, `environment.ts` *is* the production
+  // build and is replaced by `environment.development.ts` during development.
+  // The legacy (`prod`) style is the other way round.
+  const replacement = envFileReplacement(config.environmentStyle);
+  const isDevStyle = config.environmentStyle === "development";
   const envTargets: GenerationTarget[] = [
     {
       outPath: path.join(environmentsDir, "environment.ts"),
       template: "",
       vars: {},
-      rawContent: buildEnvironmentTsContent(false, config.baseApiUrl),
+      rawContent: buildEnvironmentTsContent(isDevStyle, config.baseApiUrl),
     },
     {
-      outPath: path.join(environmentsDir, "environment.prod.ts"),
+      outPath: path.join(cwd, replacement.with),
       template: "",
       vars: {},
-      rawContent: buildEnvironmentTsContent(true, config.baseApiUrl),
+      rawContent: buildEnvironmentTsContent(!isDevStyle, config.baseApiUrl),
     },
   ];
 
@@ -87,10 +98,19 @@ export function buildGenerationTargets(
       ? "@core/interfaces/cache.interface"
       : "../interfaces/cache.interface";
 
+  const importPrefix = config.importStyle === "alias" ? "@core/" : "../";
+  const importCacheService = `${importPrefix}services/cache.service`;
+  const importBaseService = `${importPrefix}services/base.service`;
+
   const vars: Record<string, string> = {
     IMPORT_CACHE_INTERFACE: importCacheInterface,
     AUTH_TOKEN_NAME: config.authTokenName,
     AUTH_TOKEN_IMPORT: config.authTokenImportPath,
+    BASE_API_URL_IMPORT: importCacheService,
+    CACHE_SERVICE_IMPORT: importCacheService,
+    BASE_SERVICE_IMPORT: importBaseService,
+    ...serviceDecoratorVars(capabilityOptions),
+    ...changeDetectionVars(capabilityOptions),
   };
 
   const baseTemplate = config.useHttpResource
@@ -150,6 +170,14 @@ export function buildGenerationTargets(
     });
   }
 
+  if (config.generateCacheInterceptor) {
+    targets.push({
+      outPath: path.join(interceptorsDir, "cache.interceptor.ts"),
+      template: "cache.interceptor.ts.tpl",
+      vars,
+    });
+  }
+
   if (config.generateProjectStructure) {
     const coreDir = path.join(cwd, outputDir);
     const appDir = path.join(cwd, "src/app");
@@ -158,7 +186,8 @@ export function buildGenerationTargets(
     if (
       !config.generateAuthInterceptor &&
       !config.generateErrorInterceptor &&
-      !config.generateLoggingInterceptor
+      !config.generateLoggingInterceptor &&
+      !config.generateCacheInterceptor
     ) {
       coreEmptyDirs.push("interceptors");
     }
@@ -175,7 +204,7 @@ export function buildGenerationTargets(
       {
         outPath: path.join(appDir, "layout/private/private.component.ts"),
         template: "layout-private.component.ts.tpl",
-        vars: {},
+        vars: changeDetectionVars(capabilityOptions),
       },
       {
         outPath: path.join(appDir, "layout/private/private.component.html"),
@@ -191,7 +220,7 @@ export function buildGenerationTargets(
       {
         outPath: path.join(appDir, "layout/public/public.component.ts"),
         template: "layout-public.component.ts.tpl",
-        vars: {},
+        vars: changeDetectionVars(capabilityOptions),
       },
       {
         outPath: path.join(appDir, "layout/public/public.component.html"),
@@ -213,7 +242,7 @@ export function buildGenerationTargets(
           "pages/landing-page/landing-page.component.ts",
         ),
         template: "pages-landing-page.component.ts.tpl",
-        vars: {},
+        vars: changeDetectionVars(capabilityOptions),
       },
       {
         outPath: path.join(

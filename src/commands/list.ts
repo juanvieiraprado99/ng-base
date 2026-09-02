@@ -31,7 +31,10 @@ const STATUS_LABEL: Record<SyncStatus, string> = {
   absent: pc.red("absent"),
 };
 
-export async function runList(cwd: string = process.cwd()): Promise<void> {
+export async function runList(
+  cwd: string = process.cwd(),
+  check = false,
+): Promise<void> {
   p.intro(pc.inverse(" ngx-base-cli list "));
 
   const config = await readNgxBaseConfig(cwd);
@@ -91,7 +94,8 @@ export async function runList(cwd: string = process.cwd()): Promise<void> {
     parts.push(pc.magenta(`${count("edited")} locally edited`));
   if (count("absent")) parts.push(pc.red(`${count("absent")} absent`));
 
-  if (count("drift") > 0 || count("absent") > 0) {
+  // `list` is informational by default; `--check` turns it into a CI gate.
+  if (check && (count("drift") > 0 || count("absent") > 0)) {
     process.exitCode = 1;
   }
 

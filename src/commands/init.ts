@@ -3,8 +3,9 @@ import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
 import {
+  type AngularCapabilities,
+  detectCapabilities,
   parseAngularCoreVersion,
-  versionSupportsHttpResource,
 } from "../lib/angular-version.js";
 import type { NgxBaseCliConfig, StorageEngine } from "../lib/config.js";
 import { DEFAULT_NGX_BASE_CONFIG, writeNgxBaseConfig } from "../lib/config.js";
@@ -13,14 +14,20 @@ import { importFromSrcApp } from "../lib/import-paths.js";
 import {
   type Manifest,
   manifestKey,
+  readManifest,
   sha256,
   writeManifest,
 } from "../lib/manifest.js";
 import { detectPackageManager, dlxCommand } from "../lib/package-manager.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
-import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
-import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
 import {
+  envFileReplacement,
+  patchAngularJsonFileReplacements,
+} from "../lib/patch-angular-json.js";
+import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
+import { editJsonText, type JsonEdit } from "../lib/patch-json.js";
+import {
+  applyCapabilityDefaults,
   PRESET_DESCRIPTIONS,
   PRESETS,
   type PresetName,
@@ -33,16 +40,25 @@ import {
   validateUrl,
 } from "../lib/validators.js";
 
-async function promptPresetSelection(): Promise<NgxBaseCliConfig | null> {
-  const presetName = await p.select<PresetName>({
-    message: "Which preset would you like to use?",
-    options: (Object.keys(PRESETS) as PresetName[]).map((key) => ({
-      value: key,
-      label: key,
-      hint: PRESET_DESCRIPTIONS[key],
-    })),
-    initialValue: "minimal" as PresetName,
-  });
+async function promptPresetSelection(
+  caps: AngularCapabilities,
+  preselected?: PresetName,
+): Promise<NgxBaseCliConfig | null> {
+  // A named preset (or a non-interactive stdin) skips the picker entirely, so
+  // `init --yes` can run unattended in CI.
+  const presetName =
+    preselected ??
+    (!process.stdin.isTTY
+      ? ("minimal" as PresetName)
+      : await p.select<PresetName>({
+          message: "Which preset would you like to use?",
+          options: (Object.keys(PRESETS) as PresetName[]).map((key) => ({
+            value: key,
+            label: key,
+            hint: PRESET_DESCRIPTIONS[key],
+          })),
+          initialValue: "minimal" as PresetName,
+        }));
   if (p.isCancel(presetName)) {
     p.cancel("Cancelled.");
     return null;
@@ -52,14 +68,34 @@ async function promptPresetSelection(): Promise<NgxBaseCliConfig | null> {
       `Using preset "${presetName}": ${PRESET_DESCRIPTIONS[presetName]}`,
     ),
   );
-  return { ...PRESETS[presetName] };
+  return applyCapabilityDefaults({ ...PRESETS[presetName] }, caps);
+}
+
+export interface InitOptions {
+  yes?: boolean;
+  dryRun?: boolean;
+  /** Skip generating `.spec.ts` files for artifacts added later. */
+  skipTests?: boolean;
+  /** Use this preset without asking (implies `yes`). */
+  preset?: PresetName;
 }
 
 export async function runInit(
   cwd: string = process.cwd(),
-  yes = false,
-  dryRun = false,
+  options: InitOptions = {},
 ): Promise<void> {
+  const { dryRun = false, skipTests = false, preset } = options;
+  const yes = options.yes === true || preset !== undefined;
+
+  if (preset !== undefined && !(preset in PRESETS)) {
+    p.outro(
+      pc.red(
+        `Unknown preset "${preset}". Allowed: ${Object.keys(PRESETS).join(", ")}.`,
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
   p.intro(pc.inverse(" ngx-base-cli init "));
 
   const pkgPath = path.join(cwd, "package.json");
@@ -96,12 +132,12 @@ export async function runInit(
   }
 
   const angularVersion = parseAngularCoreVersion(deps["@angular/core"]);
-  const httpResourceSupported = versionSupportsHttpResource(angularVersion);
+  const caps = detectCapabilities(angularVersion);
 
   let config: NgxBaseCliConfig | null = null;
 
   if (yes) {
-    config = await promptPresetSelection();
+    config = await promptPresetSelection(caps, preset);
   } else {
     const setupMode = await p.select<"preset" | "customize" | "custom">({
       message: "How would you like to set up ngx-base?",
@@ -129,27 +165,25 @@ export async function runInit(
       return;
     }
     if (setupMode === "preset") {
-      config = await promptPresetSelection();
+      config = await promptPresetSelection(caps);
     } else if (setupMode === "customize") {
-      const base = await promptPresetSelection();
+      const base = await promptPresetSelection(caps);
       config = base
-        ? await runInteractivePrompts(
-            deps,
-            httpResourceSupported,
-            angularVersion,
-            base,
-          )
+        ? await runInteractivePrompts(deps, caps, angularVersion, base)
         : null;
     } else {
       config = await runInteractivePrompts(
         deps,
-        httpResourceSupported,
+        caps,
         angularVersion,
+        applyCapabilityDefaults({ ...DEFAULT_NGX_BASE_CONFIG }, caps),
       );
     }
   }
 
   if (!config) return;
+
+  if (skipTests) config.generateSpecs = false;
 
   if (!yes && !dryRun) {
     p.note(buildConfigSummary(config), "Configuration");
@@ -182,7 +216,9 @@ export async function runInit(
 
     const patches: string[] = [];
     if (await fse.pathExists(path.join(cwd, "angular.json"))) {
-      patches.push("angular.json — production fileReplacements");
+      patches.push(
+        `angular.json — ${envFileReplacement(config.environmentStyle).configuration} fileReplacements`,
+      );
     }
     if (
       config.importStyle === "alias" &&
@@ -213,7 +249,7 @@ export async function runInit(
   const anyExisting = existingChecks.some(Boolean);
 
   let overwriteAll = false;
-  if (anyExisting) {
+  if (anyExisting && process.stdin.isTTY) {
     const overwriteAnswer = await p.confirm({
       message: "Some files already exist. Overwrite all existing files?",
       initialValue: false,
@@ -226,7 +262,9 @@ export async function runInit(
   }
 
   let skippedExistingCount = 0;
-  const manifest: Manifest = { version: 1, files: {} };
+  // Merge into the existing manifest rather than starting fresh: `add` records
+  // its artifacts in the same file, and re-running `init` must not drop them.
+  const manifest: Manifest = await readManifest(cwd);
   for (const t of targets) {
     if (t.dirOnly) {
       await fse.ensureDir(t.outPath);
@@ -236,19 +274,21 @@ export async function runInit(
 
     await fse.mkdir(path.dirname(t.outPath), { recursive: true });
 
-    if (await fse.pathExists(t.outPath)) {
-      if (!overwriteAll) {
-        skippedExistingCount++;
-        continue;
-      }
+    const content = await renderGenerationTarget(t);
+    const key = manifestKey(cwd, t.outPath);
+    const exists = await fse.pathExists(t.outPath);
+
+    // Record what the CLI would have written even when the file is left alone.
+    // Without an entry, `classifyTarget` reports `drift` for a file the CLI
+    // never wrote, and a later `update` would overwrite it with no warning.
+    manifest.files[key] = { hash: sha256(content), template: t.template };
+
+    if (exists && !overwriteAll) {
+      skippedExistingCount++;
+      continue;
     }
 
-    const content = await renderGenerationTarget(t);
     await fse.outputFile(t.outPath, content, "utf8");
-    manifest.files[manifestKey(cwd, t.outPath)] = {
-      hash: sha256(content),
-      template: t.template,
-    };
     p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
   }
   if (skippedExistingCount > 0) {
@@ -262,9 +302,13 @@ export async function runInit(
   await writeNgxBaseConfig(cwd, config);
   await writeManifest(cwd, manifest);
 
+  const envReplacement = envFileReplacement(config.environmentStyle);
   const angularJsonPath = path.join(cwd, "angular.json");
   if (await fse.pathExists(angularJsonPath)) {
-    const angularResult = await patchAngularJsonFileReplacements(cwd);
+    const angularResult = await patchAngularJsonFileReplacements(
+      cwd,
+      config.environmentStyle,
+    );
     if (!angularResult.ok) {
       p.log.warn(
         pc.yellow(
@@ -274,14 +318,14 @@ export async function runInit(
     } else if (angularResult.mutated) {
       p.log.success(
         pc.green(
-          `OK: ${path.relative(cwd, angularJsonPath)} (production fileReplacements)`,
+          `OK: ${path.relative(cwd, angularJsonPath)} (${envReplacement.configuration} fileReplacements)`,
         ),
       );
     }
   }
 
   if (config.importStyle === "alias") {
-    await offerTsconfigPatch(cwd, config);
+    await offerTsconfigPatch(cwd, config, yes || !process.stdin.isTTY);
   }
 
   const appCfgResult = await patchAppConfigForHttp(cwd, config);
@@ -318,11 +362,11 @@ export async function runInit(
         "",
         pc.cyan(noteBody),
       ];
-  if (config.useHttpResource) {
+  if (config.useHttpResource && !caps.httpResourceStable) {
     nextStepLines.push(
       "",
       pc.yellow(
-        "httpResource é experimental: https://angular.dev/guide/signals/resource",
+        "httpResource is experimental before Angular 22: https://angular.dev/guide/signals/resource",
       ),
     );
   }
@@ -344,14 +388,17 @@ export async function runInit(
 
 async function runInteractivePrompts(
   deps: Record<string, string>,
-  httpResourceSupported: boolean,
+  caps: AngularCapabilities,
   angularVersion: string | null,
   defaults: NgxBaseCliConfig = DEFAULT_NGX_BASE_CONFIG,
 ): Promise<NgxBaseCliConfig | null> {
+  const httpResourceSupported = caps.httpResourceAvailable;
   if (httpResourceSupported) {
     p.log.info(
       pc.cyan(
-        `Angular ${angularVersion}: httpResource is available for GET (Angular 19.1+).`,
+        caps.httpResourceStable
+          ? `Angular ${angularVersion}: the Resource API is stable — httpResource is available for GET.`
+          : `Angular ${angularVersion}: httpResource is available for GET (experimental until Angular 22).`,
       ),
     );
   } else if (deps["@angular/core"]) {
@@ -364,10 +411,11 @@ async function runInteractivePrompts(
     );
   }
 
-  const initialInterceptors: ("auth" | "error" | "logging")[] = [];
+  const initialInterceptors: ("auth" | "error" | "logging" | "cache")[] = [];
   if (defaults.generateAuthInterceptor) initialInterceptors.push("auth");
   if (defaults.generateErrorInterceptor) initialInterceptors.push("error");
   if (defaults.generateLoggingInterceptor) initialInterceptors.push("logging");
+  if (defaults.generateCacheInterceptor) initialInterceptors.push("cache");
 
   const answers = await p.group(
     {
@@ -404,8 +452,9 @@ async function runInteractivePrompts(
       useHttpResource: () =>
         httpResourceSupported
           ? p.confirm({
-              message:
-                "Use httpResource for the GET method? (experimental API)",
+              message: caps.httpResourceStable
+                ? "Use httpResource for the GET method? (stable since Angular 22)"
+                : "Use httpResource for the GET method? (experimental API)",
               initialValue: defaults.useHttpResource,
             })
           : undefined,
@@ -429,7 +478,7 @@ async function runInteractivePrompts(
           initialValue: defaults.storageEngine,
         }),
       interceptors: () =>
-        p.multiselect<"auth" | "error" | "logging">({
+        p.multiselect<"auth" | "error" | "logging" | "cache">({
           message:
             "HTTP interceptors to generate (space to toggle, enter when done)",
           options: [
@@ -443,6 +492,11 @@ async function runInteractivePrompts(
               value: "logging",
               label: "LoggingInterceptor",
               hint: "Logs requests in devMode only",
+            },
+            {
+              value: "cache",
+              label: "CacheInterceptor",
+              hint: "Serves GETs flagged by BaseService from CacheService",
             },
           ],
           required: false,
@@ -490,6 +544,9 @@ async function runInteractivePrompts(
   const interceptors = answers.interceptors ?? [];
 
   return {
+    // Keeps the fields the wizard does not ask about (angularTarget,
+    // fileNaming, environmentStyle, generateSpecs) as chosen by capabilities.
+    ...defaults,
     outputDir: String(answers.outputDir)
       .trim()
       .replace(/[/\\]+$/, ""),
@@ -506,6 +563,7 @@ async function runInteractivePrompts(
       : defaults.authTokenImportPath,
     generateErrorInterceptor: interceptors.includes("error"),
     generateLoggingInterceptor: interceptors.includes("logging"),
+    generateCacheInterceptor: interceptors.includes("cache"),
     generateBarrel: answers.generateBarrel,
     generateProjectStructure: answers.generateProjectStructure,
   };
@@ -516,6 +574,7 @@ function buildConfigSummary(config: NgxBaseCliConfig): string {
     config.generateAuthInterceptor && "auth",
     config.generateErrorInterceptor && "error",
     config.generateLoggingInterceptor && "logging",
+    config.generateCacheInterceptor && "cache",
   ].filter(Boolean) as string[];
 
   const rows: [string, string][] = [
@@ -527,6 +586,13 @@ function buildConfigSummary(config: NgxBaseCliConfig): string {
     ["Interceptors", interceptors.length ? interceptors.join(", ") : "none"],
     ["Barrel export", config.generateBarrel ? "yes" : "no"],
     ["Project structure", config.generateProjectStructure ? "yes" : "no"],
+    ["File naming", config.fileNaming],
+    ["Environments", config.environmentStyle],
+    [
+      "Angular target",
+      config.angularTarget ? `v${config.angularTarget}` : "unknown",
+    ],
+    ["Generate specs", config.generateSpecs ? "yes" : "no"],
   ];
   if (config.generateAuthInterceptor) {
     rows.push(["Auth token", config.authTokenName]);
@@ -542,32 +608,20 @@ function buildConfigSummary(config: NgxBaseCliConfig): string {
 async function offerTsconfigPatch(
   cwd: string,
   config: NgxBaseCliConfig,
+  autoConfirm: boolean,
 ): Promise<void> {
   const tsconfigPath = path.join(cwd, "tsconfig.json");
   if (!(await fse.pathExists(tsconfigPath))) return;
 
-  const patchAlias = await p.confirm({
-    message:
-      "Add path aliases (@core/*, @layout/*, @pages/*, @shared/*) to tsconfig.json?",
-    initialValue: true,
-  });
-  if (p.isCancel(patchAlias) || !patchAlias) return;
-
   const raw = await fse.readFile(tsconfigPath, "utf8");
   let tsconfig: {
-    compilerOptions?: { paths?: Record<string, string[]>; baseUrl?: string };
+    compilerOptions?: { paths?: Record<string, string[]> };
   };
   try {
     tsconfig = parseJsonWithComments(raw) as typeof tsconfig;
   } catch {
     p.log.warn(pc.yellow("Could not parse tsconfig.json — skipping patch."));
     return;
-  }
-
-  if (!tsconfig.compilerOptions) tsconfig.compilerOptions = {};
-  if (!tsconfig.compilerOptions.paths) tsconfig.compilerOptions.paths = {};
-  if (!tsconfig.compilerOptions.baseUrl) {
-    tsconfig.compilerOptions.baseUrl = "./";
   }
 
   const outDirSrc = config.outputDir; // e.g. src/app/core
@@ -580,27 +634,46 @@ async function offerTsconfigPatch(
     "@shared/*": [`${appDir}/shared/*`],
   };
 
-  const addedAliases: string[] = [];
-  for (const [alias, targets] of Object.entries(newAliases)) {
-    if (!tsconfig.compilerOptions.paths[alias]) {
-      tsconfig.compilerOptions.paths[alias] = targets;
-      addedAliases.push(alias);
-    }
-  }
+  const existingPaths = tsconfig.compilerOptions?.paths ?? {};
+  const addedAliases = Object.keys(newAliases).filter(
+    (alias) => existingPaths[alias] === undefined,
+  );
 
   if (addedAliases.length === 0) {
     p.log.info("All aliases already present in tsconfig.json — nothing to do.");
     return;
   }
 
-  const newContent = `${JSON.stringify(tsconfig, null, 2)}\n`;
-
-  p.log.info(pc.dim("Diff preview:"));
+  p.log.info(pc.dim("tsconfig.json changes:"));
   for (const a of addedAliases) {
     p.log.info(pc.green(`  + "${a}": ${JSON.stringify(newAliases[a])}`));
   }
 
-  await fse.outputFile(tsconfigPath, newContent, "utf8");
+  if (!autoConfirm) {
+    const patchAlias = await p.confirm({
+      message: "Add these path aliases to tsconfig.json?",
+      initialValue: true,
+    });
+    if (p.isCancel(patchAlias) || !patchAlias) return;
+  }
+
+  // Surgical edits: `ng new` ships tsconfig.json full of explanatory comments,
+  // and re-serializing the parsed object would delete every one of them.
+  const edits: JsonEdit[] = [];
+  if (!tsconfig.compilerOptions) {
+    edits.push({ path: ["compilerOptions"], value: {} });
+  }
+  if (!tsconfig.compilerOptions?.paths) {
+    edits.push({ path: ["compilerOptions", "paths"], value: {} });
+  }
+  for (const alias of addedAliases) {
+    edits.push({
+      path: ["compilerOptions", "paths", alias],
+      value: newAliases[alias],
+    });
+  }
+
+  await fse.writeFile(tsconfigPath, editJsonText(raw, edits), "utf8");
   p.log.success(
     pc.green(
       `tsconfig.json updated (${addedAliases.length} alias${addedAliases.length > 1 ? "es" : ""} added).`,

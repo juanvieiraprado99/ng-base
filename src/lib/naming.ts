@@ -7,7 +7,8 @@ export type AddType =
   | "directive"
   | "interface"
   | "store"
-  | "enum";
+  | "enum"
+  | "form";
 
 export const ADD_TYPES: AddType[] = [
   "service",
@@ -19,21 +20,34 @@ export const ADD_TYPES: AddType[] = [
   "interface",
   "store",
   "enum",
+  "form",
 ];
 
-export function kebabName(raw: string): string {
-  return raw
+/**
+ * Split a raw name into words, honouring separators (`-`, `_`, `/`, spaces),
+ * camelCase boundaries, and acronym boundaries.
+ *
+ * `"UserProfile"` → `["User", "Profile"]`, `"APIKey"` → `["API", "Key"]`.
+ */
+export function splitWords(raw: string): string[] {
+  return String(raw)
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+export function kebabName(raw: string): string {
+  return splitWords(raw)
+    .map((w) => w.toLowerCase())
+    .join("-");
 }
 
 export function pascalName(raw: string): string {
-  const s = raw.trim().replace(/[^a-zA-Z0-9_-]/g, "");
-  const parts = s.split(/[-_/]/).filter(Boolean);
-  return parts
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+  return splitWords(raw)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join("");
 }
 
@@ -52,12 +66,13 @@ const CLASS_SUFFIX: Record<AddType, string> = {
   interface: "",
   store: "Store",
   enum: "",
+  form: "Form",
 };
 
 /** Class/const identifier for a generated artifact, e.g. `UserService`, `userGuard`. */
 export function symbolName(raw: string, type: AddType): string {
   const base = pascalName(raw) || "Feature";
-  if (type === "guard" || type === "resolver") {
+  if (type === "guard" || type === "resolver" || type === "form") {
     const camel = base.charAt(0).toLowerCase() + base.slice(1);
     return `${camel}${CLASS_SUFFIX[type]}`;
   }
