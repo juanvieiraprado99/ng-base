@@ -43,7 +43,7 @@ CLI built with **commander** + **@clack/prompts**. ESM-only (`"type": "module"`)
 
 ### Core flow
 
-1. `src/index.ts` — registers the six commands (`init`, `add`, `remove`, `update`, `list`, `doctor`) via commander
+1. `src/index.ts` — registers the seven commands (`init`, `add`, `remove`, `update`, `list`, `doctor`, `eject`) via commander
 2. `src/commands/` — one file per command; each calls into `src/lib/`. `add` and `remove` scaffold/delete one of `service | component | guard | resolver | pipe | directive | interface | store | enum | form` (`-t, --type`, default `service`), driven by `ADD_TYPES` in `src/lib/naming.ts`. Both share `src/lib/artifact-plan.ts` — `planArtifactFiles()` maps a type+name to its output files (including the companion `.spec.ts`). `add component` accepts `--inline-template` and `--style scss|css|none`
 3. `src/lib/config.ts` — `NgxBaseCliConfig` type + `readNgxBaseConfig` / `writeNgxBaseConfig`; config lives at `.ngx-base-cli.json` in the target Angular project root
 4. `src/lib/generate-plan.ts` — `buildGenerationTargets()` maps a config to an array of `GenerationTarget` objects (each has `outPath`, `template`, `vars`, optional `rawContent`)
