@@ -10,10 +10,11 @@ import type { NgxBaseCliConfig } from "../lib/config.js";
 import { readNgxBaseConfig } from "../lib/config.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
 import { envFileReplacement } from "../lib/patch-angular-json.js";
+import { templateStatuses } from "../lib/template-registry.js";
 
 type Level = "ok" | "warn" | "error";
 
-interface Check {
+export interface Check {
   level: Level;
   label: string;
   detail?: string;
@@ -45,6 +46,7 @@ export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
   await checkAliases(checks, cwd, config);
   await checkAppConfig(checks, cwd, config);
   await checkAuthToken(checks, cwd, config);
+  await checkTemplates(checks, cwd);
 
   const maxLen = Math.max(...checks.map((c) => c.label.length));
   const body = checks
@@ -270,6 +272,49 @@ async function checkAppConfig(
         : "Interceptors generated but not wired via withInterceptors(...).",
     });
   }
+}
+
+/**
+ * Ejected templates are the project's own code, so their presence is fine —
+ * what matters is when the built-in they were copied from has moved on.
+ */
+export async function checkTemplates(
+  checks: Check[],
+  cwd: string,
+): Promise<void> {
+  const statuses = await templateStatuses(cwd);
+  const ejected = statuses.filter((s) => s.ejected);
+  if (ejected.length === 0) return;
+
+  const stale = ejected.filter((s) => s.stale);
+  const orphaned = ejected.filter((s) => s.orphaned);
+
+  if (stale.length === 0 && orphaned.length === 0) {
+    checks.push({
+      level: "ok",
+      label: "ejected templates",
+      detail: `${ejected.length} template(s) overridden in .ngx-base-cli/templates/, all current.`,
+    });
+    return;
+  }
+
+  const problems: string[] = [];
+  if (stale.length > 0) {
+    problems.push(
+      `built-in changed since eject: ${stale.map((s) => s.name).join(", ")} (see \`ngx-base-cli eject --diff <name>\`)`,
+    );
+  }
+  if (orphaned.length > 0) {
+    problems.push(
+      `no built-in with this name: ${orphaned.map((s) => s.name).join(", ")}`,
+    );
+  }
+
+  checks.push({
+    level: "warn",
+    label: "ejected templates",
+    detail: problems.join(" · "),
+  });
 }
 
 async function checkAuthToken(

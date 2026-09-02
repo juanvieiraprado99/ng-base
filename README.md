@@ -519,6 +519,34 @@ OK  provideHttpClient()
 OK  BASE_API_URL provider
 ```
 
+## `eject` command — own your templates
+
+The generated code is yours; with `eject`, so are the templates that produce it.
+
+```bash
+npx ngx-base-cli eject feature.service        # copy one template into your project
+npx ngx-base-cli eject --list                 # what is ejected, what is stale
+npx ngx-base-cli eject --diff feature.service # your copy vs the current built-in
+npx ngx-base-cli eject --revert feature.service
+```
+
+An ejected template lands in `.ngx-base-cli/templates/` — commit it, it is your
+code. From then on `add`, `init` and `update` render from your copy instead of
+the built-in one, and the manifest keeps working: change a template, run
+`ngx-base-cli update`, and the affected files are regenerated from it.
+
+Eject one template at a time rather than all of them. Everything you do not
+eject keeps receiving CLI improvements.
+
+`eject` records the built-in's hash at the moment you copied it, in
+`.ngx-base-cli/templates.json`. When a later CLI version changes that built-in,
+`eject --list` and `doctor` say so, and `eject --diff <name>` shows what
+separates your copy from the current one — you decide what to merge back.
+
+Templates are plain text with `{{TOKEN}}` placeholders. Dropping a token you do
+not want is fine; introducing one the CLI does not provide is an error naming
+the file and the token.
+
 ## `--yes` / `--preset` flags (init)
 
 Skip the full interactive wizard and pick a preset instead:
@@ -583,6 +611,8 @@ File at the **Angular project root** (same level as `package.json`). Missing val
 ## `.ngx-base-cli.manifest.json`
 
 Alongside the config, `init`, `add`, and `update` maintain **`.ngx-base-cli.manifest.json`** in the project root — a sha256 hash of each generated file. This lets `list` and `update` tell pristine CLI output apart from files you edited by hand (so they can be skipped on update). Safe to commit; do not edit by hand.
+
+`.ngx-base-cli/templates.json` records which templates you have ejected and the built-in hash each copy was taken from. Commit it with the templates.
 
 ## Local development (CLI repository)
 
@@ -1083,6 +1113,34 @@ OK  provideHttpClient()
 OK  BASE_API_URL provider
 ```
 
+## Comando `eject` — os templates passam a ser teus
+
+O código gerado é teu; com o `eject`, os templates que o produzem também.
+
+```bash
+npx ngx-base-cli eject feature.service        # copia um template para o projeto
+npx ngx-base-cli eject --list                 # o que está ejetado e o que está desatualizado
+npx ngx-base-cli eject --diff feature.service # a tua cópia vs o built-in atual
+npx ngx-base-cli eject --revert feature.service
+```
+
+Um template ejetado fica em `.ngx-base-cli/templates/` — mete-o no repositório, é
+código teu. A partir daí o `add`, o `init` e o `update` renderizam a partir da tua
+cópia em vez da built-in, e o manifesto continua a funcionar: mudas o template,
+corres `ngx-base-cli update`, e os ficheiros afetados são regenerados.
+
+Ejeta um template de cada vez, não todos. Tudo o que não ejetares continua a
+receber as melhorias do CLI.
+
+O `eject` guarda o hash do built-in no momento em que copiaste, no
+`.ngx-base-cli/templates.json`. Quando uma versão posterior do CLI mudar esse
+built-in, o `eject --list` e o `doctor` avisam, e o `eject --diff <nome>` mostra o
+que separa a tua cópia da atual — decides tu o que incorporar.
+
+Os templates são texto com placeholders `{{TOKEN}}`. Retirar um token que não
+queres é legítimo; introduzir um que o CLI não fornece dá erro a nomear o
+ficheiro e o token.
+
 ## Flags `--yes` / `--preset` (init)
 
 Salta o wizard interativo completo e escolhe um preset:
@@ -1147,6 +1205,8 @@ Ficheiro na **raiz do projeto Angular** (mesmo nível que `package.json`). Valor
 ## `.ngx-base-cli.manifest.json`
 
 Além da config, o `init`, `add` e `update` mantêm **`.ngx-base-cli.manifest.json`** na raiz do projeto — um hash sha256 de cada ficheiro gerado. Isto permite ao `list` e `update` distinguir o output original do CLI de ficheiros que editaste à mão (para os ignorar no update). Seguro para commit; não editar à mão.
+
+O `.ngx-base-cli/templates.json` regista que templates ejetaste e o hash do built-in de onde cada cópia saiu. Mete-o no repositório junto com os templates.
 
 ## Desenvolvimento local (repositório do CLI)
 

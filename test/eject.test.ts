@@ -3,6 +3,7 @@ import path from "node:path";
 import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runAdd } from "../src/commands/add";
+import { type Check, checkTemplates } from "../src/commands/doctor";
 import { runEject } from "../src/commands/eject";
 import { runInit } from "../src/commands/init";
 import {
@@ -205,5 +206,35 @@ describe("runEject --revert", () => {
     expect(await fse.pathExists(overridePath("removed.by.newer.cli.tpl"))).toBe(
       false,
     );
+  });
+});
+
+describe("doctor template check", () => {
+  it("is quiet when nothing is ejected", async () => {
+    const checks: Check[] = [];
+    await checkTemplates(checks, dir);
+    expect(checks).toEqual([]);
+  });
+
+  it("reports the ejected count", async () => {
+    await runEject(["feature.guard"], dir, {});
+    const checks: Check[] = [];
+    await checkTemplates(checks, dir);
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ level: "ok" });
+    expect(checks[0].detail).toContain("1");
+  });
+
+  it("warns about a stale override", async () => {
+    await runEject(["feature.guard"], dir, {});
+    const registryPath = path.join(dir, ".ngx-base-cli", "templates.json");
+    const registry = await fse.readJson(registryPath);
+    registry.templates["feature.guard.ts.tpl"].builtInHash = "0".repeat(64);
+    await fse.writeJson(registryPath, registry, { spaces: 2 });
+
+    const checks: Check[] = [];
+    await checkTemplates(checks, dir);
+    expect(checks[0]).toMatchObject({ level: "warn" });
+    expect(checks[0].detail).toContain("feature.guard.ts.tpl");
   });
 });

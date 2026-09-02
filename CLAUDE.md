@@ -33,6 +33,8 @@ node dist/index.js update --force
 node dist/index.js list
 node dist/index.js list --check                # exit 1 when out of date (CI gate)
 node dist/index.js doctor
+node dist/index.js eject feature.service       # own a template
+node dist/index.js eject --list
 ```
 
 ## Architecture
@@ -45,7 +47,7 @@ CLI built with **commander** + **@clack/prompts**. ESM-only (`"type": "module"`)
 2. `src/commands/` — one file per command; each calls into `src/lib/`. `add` and `remove` scaffold/delete one of `service | component | guard | resolver | pipe | directive | interface | store | enum | form` (`-t, --type`, default `service`), driven by `ADD_TYPES` in `src/lib/naming.ts`. Both share `src/lib/artifact-plan.ts` — `planArtifactFiles()` maps a type+name to its output files (including the companion `.spec.ts`). `add component` accepts `--inline-template` and `--style scss|css|none`
 3. `src/lib/config.ts` — `NgxBaseCliConfig` type + `readNgxBaseConfig` / `writeNgxBaseConfig`; config lives at `.ngx-base-cli.json` in the target Angular project root
 4. `src/lib/generate-plan.ts` — `buildGenerationTargets()` maps a config to an array of `GenerationTarget` objects (each has `outPath`, `template`, `vars`, optional `rawContent`)
-5. `src/lib/templates.ts` — `applyTemplate(filename, vars)` reads from `src/templates/` (dev) or `dist/templates/` (prod) and replaces `{{VAR}}` tokens
+5. `src/lib/template-registry.ts` — two-layer template lookup (project override in `.ngx-base-cli/templates/` → built-in) plus the eject registry (`.ngx-base-cli/templates.json`, the built-in's hash at eject time). `src/lib/templates.ts` — `applyTemplate(filename, vars, cwd)` renders the resolved file and replaces `{{VAR}}` tokens
 6. `src/templates/*.tpl` — static template files; **copied to `dist/templates/` by `scripts/copy-templates.mjs`** (not bundled by tsup, must be copied manually)
 
 ### Angular version adaptation
@@ -95,10 +97,12 @@ These are populated in `generate-plan.ts` / `artifact-plan.ts` from the config a
 | `src/lib/import-paths.ts` | Resolves alias vs. relative import strings |
 | `src/lib/render-target.ts` | Writes a single `GenerationTarget` to disk (mkdir + write) |
 | `src/lib/parse-jsonc.ts` | Strips JSON comments before `JSON.parse` (for `tsconfig.json`) |
+| `src/lib/template-registry.ts` | Override → built-in resolution, eject registry, `templateStatuses()`, `resolveTemplateName()` |
+| `src/lib/diff.ts` | `formatDiff()` — shared by `update` and `eject --diff` |
 
 ### Build note
 
-`npm run build` runs `tsup` then `node ./scripts/copy-templates.mjs`. If you add a new `.tpl` file under `src/templates/`, it will be picked up automatically by the copy script. Forgetting to build before testing with `node dist/index.js` means templates won't reflect your changes.
+`npm run build` runs `tsup` then `node ./scripts/copy-templates.mjs`. If you add a new `.tpl` file under `src/templates/`, it will be picked up automatically by the copy script. Forgetting to build before testing with `node dist/index.js` means templates won't reflect your changes. `src/templates/` also holds `environment.ts.tpl`, `barrel.index.ts.tpl`, `app.routes.ts.tpl` and `app.html.tpl`, which used to be built by string concatenation.
 
 ### Tooling
 
