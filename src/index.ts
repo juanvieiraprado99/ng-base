@@ -3,6 +3,7 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { runAdd } from "./commands/add.js";
 import { runDoctor } from "./commands/doctor.js";
+import { runEject } from "./commands/eject.js";
 import { runInit } from "./commands/init.js";
 import { runList } from "./commands/list.js";
 import { runRemove } from "./commands/remove.js";
@@ -170,6 +171,22 @@ program
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
   .action((opts: { cwd?: string }) =>
     run(() => runDoctor(opts.cwd ?? process.cwd())),
+  );
+
+program
+  .command("eject")
+  .description(
+    "Copy a built-in template into .ngx-base-cli/templates/ so the project owns it",
+  )
+  .argument("[names...]", "template names, e.g. feature.service")
+  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
+  .option("-f, --force", "Overwrite an override that already exists")
+  .action((names: string[], opts: { cwd?: string; force?: boolean }) =>
+    run(() =>
+      runEject(names, opts.cwd ?? process.cwd(), {
+        force: opts.force ?? false,
+      }),
+    ),
   );
 
 program.parse();
