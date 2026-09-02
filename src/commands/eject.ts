@@ -8,6 +8,7 @@ import {
   builtInTemplatesDir,
   cliVersion,
   listBuiltInTemplates,
+  listOverrideTemplates,
   overrideTemplatesDir,
   readEjectRegistry,
   resolveTemplateName,
@@ -37,6 +38,11 @@ export async function runEject(
 
   if (opts.diff) {
     await printTemplateDiff(cwd, opts.diff);
+    return;
+  }
+
+  if (opts.revert) {
+    await revertTemplates(names, cwd, opts.yes ?? false);
     return;
   }
 
@@ -172,4 +178,55 @@ async function printTemplateDiff(cwd: string, input: string): Promise<void> {
       "Merge anything you want from the built-in into your copy by hand, then re-run `ngx-base-cli update`.",
     ),
   );
+}
+
+async function revertTemplates(
+  names: string[],
+  cwd: string,
+  yes: boolean,
+): Promise<void> {
+  // Revert must also work for orphaned overrides, so resolve against what is
+  // actually on disk rather than against the built-in list.
+  const overrides = await listOverrideTemplates(cwd);
+  const resolved: string[] = [];
+  for (const input of names) {
+    try {
+      resolved.push(resolveTemplateName(input, overrides));
+    } catch {
+      p.log.warn(pc.yellow(`Not ejected: ${input} — skipped.`));
+    }
+  }
+
+  if (resolved.length === 0) {
+    p.outro(pc.yellow("Nothing to revert."));
+    return;
+  }
+
+  p.note(
+    resolved
+      .map((n) => pc.red(path.join(".ngx-base-cli/templates", n)))
+      .join("\n"),
+    "Will delete",
+  );
+
+  if (!yes && process.stdin.isTTY) {
+    const confirmed = await p.confirm({
+      message: `Delete ${resolved.length} override(s) and fall back to the built-in templates?`,
+      initialValue: false,
+    });
+    if (p.isCancel(confirmed) || !confirmed) {
+      p.cancel("Cancelled.");
+      return;
+    }
+  }
+
+  const registry = await readEjectRegistry(cwd);
+  for (const name of resolved) {
+    await fse.remove(path.join(overrideTemplatesDir(cwd), name));
+    delete registry.templates[name];
+    p.log.success(pc.green(`Reverted: ${name}`));
+  }
+  await writeEjectRegistry(cwd, registry);
+
+  p.outro(pc.green("ngx-base-cli eject finished."));
 }

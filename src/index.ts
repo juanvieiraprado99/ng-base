@@ -183,16 +183,27 @@ program
   .option("-f, --force", "Overwrite an override that already exists")
   .option("-l, --list", "Show which templates are ejected and which are stale")
   .option("-d, --diff <name>", "Diff an ejected template against the built-in")
+  .option("--revert", "Delete an override and fall back to the built-in")
+  .option("-y, --yes", "Skip the confirmation prompt (with --revert)")
   .action(
     (
       names: string[],
-      opts: { cwd?: string; force?: boolean; list?: boolean; diff?: string },
+      opts: {
+        cwd?: string;
+        force?: boolean;
+        list?: boolean;
+        diff?: string;
+        revert?: boolean;
+        yes?: boolean;
+      },
     ) =>
       run(() =>
         runEject(names, opts.cwd ?? process.cwd(), {
           force: opts.force ?? false,
           list: opts.list ?? false,
           diff: opts.diff,
+          revert: opts.revert ?? false,
+          yes: opts.yes ?? false,
         }),
       ),
   );

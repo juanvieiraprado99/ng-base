@@ -115,7 +115,7 @@ describe("an ejected template drives real generation", () => {
     ).toBe("// house style\nexport class UserService {}\n");
   });
 
-  it.skip("reverting restores the built-in output", async () => {
+  it("reverting restores the built-in output", async () => {
     await runEject(["feature.service"], dir, {});
     await fse.outputFile(
       overridePath("feature.service.ts.tpl"),
@@ -170,5 +170,40 @@ describe("runEject --diff", () => {
 
     await runEject([], dir, { diff: "feature.guard" });
     expect(process.exitCode).toBe(0);
+  });
+});
+
+describe("runEject --revert", () => {
+  it("deletes the override and its registry entry", async () => {
+    await runEject(["feature.guard"], dir, {});
+    expect(await fse.pathExists(overridePath("feature.guard.ts.tpl"))).toBe(
+      true,
+    );
+
+    await runEject(["feature.guard"], dir, { revert: true, yes: true });
+
+    expect(await fse.pathExists(overridePath("feature.guard.ts.tpl"))).toBe(
+      false,
+    );
+    const registry = await readEjectRegistry(dir);
+    expect(registry.templates["feature.guard.ts.tpl"]).toBeUndefined();
+  });
+
+  it("reports when there was nothing to revert", async () => {
+    await runEject(["feature.guard"], dir, { revert: true, yes: true });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("reverts an orphaned override too", async () => {
+    await fse.outputFile(overridePath("removed.by.newer.cli.tpl"), "x");
+
+    await runEject(["removed.by.newer.cli.tpl"], dir, {
+      revert: true,
+      yes: true,
+    });
+
+    expect(await fse.pathExists(overridePath("removed.by.newer.cli.tpl"))).toBe(
+      false,
+    );
   });
 });
