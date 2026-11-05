@@ -201,7 +201,7 @@ export const MODULES: readonly ModuleSpec[] = [
       target(files.cacheInterceptor, "cache.interceptor.ts.tpl"),
     ],
     notes: [
-      "Use ApiClient in feature services: `ng-base generate service user`.",
+      "Use ApiClient in feature services: `ngx-base-cli generate service user`.",
       "Cache a GET with `api.get(url, { cache: true })` or `{ context: withCache() }`.",
     ],
   },

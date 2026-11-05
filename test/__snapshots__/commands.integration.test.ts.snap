@@ -2,7 +2,7 @@
 
 exports[`init → add on an Angular 22 app > add layout logging errors auth wires everything up 1`] = `
 [
-  ".ng-base.json",
+  ".ngx-base-cli.json",
   "angular.json",
   "package.json",
   "src/app/app.config.ts",
@@ -37,7 +37,7 @@ exports[`init → add on an Angular 22 app > add layout logging errors auth wire
 
 exports[`init → add on an Angular 22 app > init installs only the core and patches the project 1`] = `
 [
-  ".ng-base.json",
+  ".ngx-base-cli.json",
   "angular.json",
   "package.json",
   "src/app/app.config.ts",

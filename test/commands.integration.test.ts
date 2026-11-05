@@ -117,7 +117,7 @@ afterEach(async () => {
 
 const read = (file: string) => fse.readFile(path.join(dir, file), "utf8");
 const exists = (file: string) => fse.pathExists(path.join(dir, file));
-const config = async () => fse.readJson(path.join(dir, ".ng-base.json"));
+const config = async () => fse.readJson(path.join(dir, ".ngx-base-cli.json"));
 const tsPaths = (raw: string | undefined) =>
   Object.keys(
     (
@@ -135,7 +135,7 @@ describe("init → add on an Angular 22 app", () => {
     const tree = await snapshotTree(dir);
     expect(Object.keys(tree)).toMatchSnapshot();
 
-    const cfg = JSON.parse(tree[".ng-base.json"] ?? "{}");
+    const cfg = JSON.parse(tree[".ngx-base-cli.json"] ?? "{}");
     expect(cfg.$schema).toBe(CONFIG_SCHEMA_URL);
     expect(cfg.naming).toBe("modern");
     expect(cfg.project).toBe("demo");
@@ -259,7 +259,7 @@ describe("init → add on an Angular 22 app", () => {
     );
   });
 
-  it("migrates a 0.1 .ngx-base-cli.json on the next command", async () => {
+  it("migrates a 0.1 .ngx-base-cli.json in place on the next command", async () => {
     await fse.writeJson(path.join(dir, ".ngx-base-cli.json"), {
       outputDir: "src/app/core",
       naming: "modern",
@@ -267,13 +267,13 @@ describe("init → add on an Angular 22 app", () => {
       generateBarrel: true,
     });
     await runList(dir);
-    expect(await exists(".ngx-base-cli.json")).toBe(false);
     expect((await config()).modules).toEqual(["auth"]);
+    expect(await config()).not.toHaveProperty("generateBarrel");
   });
 
   it("rejects unknown modules", async () => {
     await runInit(dir, { yes: true, with: "auth,charts" });
     expect(process.exitCode).toBe(1);
-    expect(await exists(".ng-base.json")).toBe(false);
+    expect(await exists(".ngx-base-cli.json")).toBe(false);
   });
 });

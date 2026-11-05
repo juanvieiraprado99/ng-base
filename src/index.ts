@@ -26,7 +26,7 @@ const cwdOption = ["-c, --cwd <dir>", "Angular project directory"] as const;
 const program = new Command();
 
 program
-  .name("ng-base")
+  .name("ngx-base-cli")
   .description(
     "Copy an HTTP core (ApiClient, cache, interceptors) and optional modules into your Angular app — the code is yours to edit",
   )

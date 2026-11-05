@@ -10,7 +10,7 @@ export const PRIVATE_ROUTES: Routes = [
     canMatch: [authGuard],
 {{/if}}
 {{#if NO_GUARD}}
-    // TODO: protect this route, e.g. `ng-base add auth` → canMatch: [authGuard]
+    // TODO: protect this route, e.g. `ngx-base-cli add auth` → canMatch: [authGuard]
 {{/if}}
     loadComponent: () =>
       import('{{IMPORT_LAYOUT_PRIVATE}}').then((c) => c.{{LAYOUT_PRIVATE_CLASS}}),

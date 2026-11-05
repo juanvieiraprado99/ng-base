@@ -31,11 +31,13 @@ const ICON: Record<Level, string> = {
 };
 
 export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
-  p.intro(pc.inverse(" ng-base doctor "));
+  p.intro(pc.inverse(" ngx-base-cli doctor "));
 
   const config = await readNgBaseConfig(cwd);
   if (!config) {
-    p.outro(pc.red(".ng-base.json not found. Run `ng-base init` first."));
+    p.outro(
+      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
+    );
     process.exitCode = 1;
     return;
   }
@@ -115,7 +117,7 @@ async function checkEnvironments(
     checks.push({
       level: exists ? "ok" : "warn",
       label: `environments/${file}`,
-      detail: exists ? undefined : "Missing — run `ng-base init`.",
+      detail: exists ? undefined : "Missing — run `ngx-base-cli init`.",
     });
   }
 }

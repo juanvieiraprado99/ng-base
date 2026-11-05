@@ -17,19 +17,19 @@ export interface GenerateOptions {
   overwrite?: boolean;
 }
 
-/** `ng-base generate service <name>` — a feature service built on ApiClient. */
+/** `ngx-base-cli generate service <name>` — a feature service built on ApiClient. */
 export async function runGenerate(
   type: string,
   name: string,
   cwd: string = process.cwd(),
   opts: GenerateOptions = {},
 ): Promise<void> {
-  p.intro(pc.inverse(` ng-base generate ${type} `));
+  p.intro(pc.inverse(` ngx-base-cli generate ${type} `));
 
   if (!(GENERATE_TYPES as readonly string[]).includes(type)) {
     p.outro(
       pc.red(
-        `Unknown type "${type}". ng-base generates: ${GENERATE_TYPES.join(", ")} — use \`ng generate\` for components, pipes, etc.`,
+        `Unknown type "${type}". ngx-base-cli generates: ${GENERATE_TYPES.join(", ")} — use \`ng generate\` for components, pipes, etc.`,
       ),
     );
     process.exitCode = 1;
@@ -43,7 +43,9 @@ export async function runGenerate(
 
   const config = await readNgBaseConfig(cwd);
   if (!config) {
-    p.outro(pc.red(".ng-base.json not found. Run `ng-base init` first."));
+    p.outro(
+      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
+    );
     process.exitCode = 1;
     return;
   }
@@ -55,7 +57,7 @@ export async function runGenerate(
   if (!(await fse.pathExists(apiClient))) {
     p.outro(
       pc.red(
-        `ApiClient not found at ${path.relative(cwd, apiClient)}. Run \`ng-base init\` first.`,
+        `ApiClient not found at ${path.relative(cwd, apiClient)}. Run \`ngx-base-cli init\` first.`,
       ),
     );
     process.exitCode = 1;

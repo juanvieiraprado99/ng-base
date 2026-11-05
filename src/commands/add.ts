@@ -18,17 +18,19 @@ export interface AddCommandOptions {
   dryRun?: boolean;
 }
 
-/** `ng-base add [modules...]` — copies modules into the project. */
+/** `ngx-base-cli add [modules...]` — copies modules into the project. */
 export async function runAdd(
   names: string[],
   cwd: string = process.cwd(),
   opts: AddCommandOptions = {},
 ): Promise<void> {
-  p.intro(pc.inverse(" ng-base add "));
+  p.intro(pc.inverse(" ngx-base-cli add "));
 
   const config = await readNgBaseConfig(cwd);
   if (!config) {
-    p.outro(pc.red(".ng-base.json not found. Run `ng-base init` first."));
+    p.outro(
+      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
+    );
     process.exitCode = 1;
     return;
   }
@@ -37,7 +39,7 @@ export async function runAdd(
   if (unknown.length > 0) {
     p.outro(
       pc.red(
-        `Unknown module(s): ${unknown.join(", ")}. Available: ${MODULE_IDS.join(", ")} (see \`ng-base list\`).`,
+        `Unknown module(s): ${unknown.join(", ")}. Available: ${MODULE_IDS.join(", ")} (see \`ngx-base-cli list\`).`,
       ),
     );
     process.exitCode = 1;
@@ -52,7 +54,9 @@ export async function runAdd(
       return;
     }
     if (opts.yes) {
-      p.outro(pc.red("Name the module(s) to add, e.g. `ng-base add auth`."));
+      p.outro(
+        pc.red("Name the module(s) to add, e.g. `ngx-base-cli add auth`."),
+      );
       process.exitCode = 1;
       return;
     }

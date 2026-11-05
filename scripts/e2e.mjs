@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// End-to-end check: `ng new` → `ng-base init` + `add` → `ng build` (+ a type-check
+// End-to-end check: `ng new` → `ngx-base-cli init` + `add` → `ng build` (+ a type-check
 // of every generated file, including ones nothing imports yet).
 //
 //   npm run build && node scripts/e2e.mjs [scenario ...] [--keep] [--workdir <dir>]

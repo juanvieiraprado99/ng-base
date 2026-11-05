@@ -31,14 +31,14 @@ node dist/index.js doctor
 
 ## Architecture
 
-CLI built with **commander** + **@clack/prompts**, published as **`ng-base`** (renamed from ngx-base-cli). ESM-only (`"type": "module"`), Node >= 20, bundled with **tsup** to `dist/index.js`.
+CLI built with **commander** + **@clack/prompts**, published as **`ngx-base-cli`**. ESM-only (`"type": "module"`), Node >= 20, bundled with **tsup** to `dist/index.js`.
 
 **Model (shadcn-style):** `init` copies the *core*; `add <module>` copies optional modules. After that the code belongs to the user's project: there is **no sync/update/manifest**, and the CLI never replaces an existing file without `--overwrite` (or a yes to the prompt).
 
 ### Core flow
 
 1. `src/index.ts`: registers `init`, `add`, `list` (`ls`), `generate` (`g`, only `service`) and `doctor`.
-2. `src/commands/`: one file per command. `init` resolves the workspace, naming and config, then calls `installModules(["core", ...with])`. `add` calls `installModules(ids)`. Both write `.ng-base.json` and call `printNextSteps`.
+2. `src/commands/`: one file per command. `init` resolves the workspace, naming and config, then calls `installModules(["core", ...with])`. `add` calls `installModules(ids)`. Both write `.ngx-base-cli.json` and call `printNextSteps`.
 3. `src/lib/install.ts`: `installModules(cwd, config, ws, ids, opts)` is the shared engine:
    - tsconfig aliases first; when they can't be added it falls back to relative imports;
    - writes the targets, skipping existing files unless `overwrite`;
@@ -50,9 +50,9 @@ CLI built with **commander** + **@clack/prompts**, published as **`ng-base`** (r
    - `pathAliases(config, ws, ids)` maps `@core` always, and `@layout`/`@pages`/`@shared` only with layout.
    - **Independence rule:** a module imports only from the core and from itself (enforced by a test). The one cross-module touch is layout reading `ctx.installed` to add `authGuard`.
    - To add a module: templates in `src/templates/`, an id in `MODULE_IDS` and an entry in `MODULES`.
-5. `src/lib/config.ts`: `NgBaseConfig`, `readNgBaseConfig` and `writeNgBaseConfig`, stored as `.ng-base.json` in the target project root.
+5. `src/lib/config.ts`: `NgBaseConfig`, `readNgBaseConfig` and `writeNgBaseConfig`, stored as `.ngx-base-cli.json` in the target project root.
    - `CONFIG_FIELDS` (string, boolean or array types) is the single source for validation and for `schema.json` (`buildConfigJsonSchema`, written by `scripts/build-schema.ts`; a test fails if the committed file is stale).
-   - A 0.1 `.ngx-base-cli.json` is migrated on read by `migrateLegacyConfig`: the `generate*` flags become `modules`.
+   - A 0.1 config (`generate*` flags) is migrated in place on read by `migrateLegacyConfig`: the `generate*` flags become `modules`.
 6. `src/lib/templates.ts`: `applyTemplate(filename, vars)` replaces `{{VAR}}` tokens and non-nested `{{#if VAR}}…{{/if}}` blocks (kept when `vars.VAR === "true"`; for the inverse, use a separate var such as `NO_GUARD`). Any unreplaced `{{TOKEN}}` throws.
 7. `src/templates/*.tpl`: static template files, **copied to `dist/templates/` by `scripts/copy-templates.mjs`** (not bundled by tsup).
 

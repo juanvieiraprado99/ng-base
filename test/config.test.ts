@@ -12,7 +12,7 @@ import {
 } from "../src/lib/config";
 
 let dir: string;
-const file = () => path.join(dir, ".ng-base.json");
+const file = () => path.join(dir, ".ngx-base-cli.json");
 const write = (obj: unknown) => fse.writeFile(file(), JSON.stringify(obj));
 
 beforeEach(async () => {
@@ -96,7 +96,7 @@ describe("0.1 config migration", () => {
     });
   });
 
-  it("reads .ngx-base-cli.json, writes .ng-base.json and removes the old file", async () => {
+  it("migrates a 0.1 .ngx-base-cli.json in place", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const legacy = path.join(dir, ".ngx-base-cli.json");
     await fse.writeJson(legacy, {
@@ -109,8 +109,9 @@ describe("0.1 config migration", () => {
     const cfg = await readNgBaseConfig(dir);
     expect(cfg?.modules).toEqual(["auth", "errors"]);
     expect(cfg?.naming).toBe("modern");
-    expect(await fse.pathExists(legacy)).toBe(false);
-    expect((await fse.readJson(file())).modules).toEqual(["auth", "errors"]);
+    const written = await fse.readJson(file());
+    expect(written.modules).toEqual(["auth", "errors"]);
+    expect(written).not.toHaveProperty("generateAuthInterceptor");
   });
 });
 

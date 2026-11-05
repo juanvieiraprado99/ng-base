@@ -1,19 +1,19 @@
-# ng-base
+# ngx-base-cli
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/node/v/ng-base)](https://nodejs.org/)
-[![npm](https://img.shields.io/npm/v/ng-base)](https://www.npmjs.com/package/ng-base)
+[![Node](https://img.shields.io/node/v/ngx-base-cli)](https://nodejs.org/)
+[![npm](https://img.shields.io/npm/v/ngx-base-cli)](https://www.npmjs.com/package/ngx-base-cli)
 
 > 🇵🇹 **Português:** [README.pt-PT.md](README.pt-PT.md)
 
-Copy an HTTP core into your Angular app — `ApiClient`, response cache, `BASE_API_URL` — and add **modules** (auth, errors, logging, layout) one command at a time. Like [shadcn/ui](https://ui.shadcn.com): the code is **copied into your repository and belongs to you**. ng-base never syncs or regenerates it; edit it however you like.
+Copy an HTTP core into your Angular app — `ApiClient`, response cache, `BASE_API_URL` — and add **modules** (auth, errors, logging, layout) one command at a time. Like [shadcn/ui](https://ui.shadcn.com): the code is **copied into your repository and belongs to you**. ngx-base-cli never syncs or regenerates it; edit it however you like.
 
 *Made with love by Juan for the Angular community <3*
 
 ```bash
-npx ng-base init          # the core
-npx ng-base add auth      # + a module
-npx ng-base list          # what is available / installed
+npx ngx-base-cli init          # the core
+npx ngx-base-cli add auth      # + a module
+npx ngx-base-cli list          # what is available / installed
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ npx ng-base list          # what is available / installed
 ## `init` — the core
 
 ```bash
-npx ng-base@latest init
+npx ngx-base-cli@latest init
 ```
 
 Asks two things — the API base URL and where cached responses live (`localStorage`, `sessionStorage` or `memory`) — then lets you pick modules to add right away. Everything else is detected from `angular.json` and the project: target app, `sourceRoot`, selector prefix, file naming convention, path aliases.
@@ -41,7 +41,7 @@ src/app/core/
 ├── interfaces/cache.interface.ts
 ├── tokens/api.tokens.ts            # BASE_API_URL
 └── interceptors/cache.interceptor.ts
-.ng-base.json                       # settings + installed modules
+.ngx-base-cli.json                       # settings + installed modules
 ```
 
 and wires the project (AST/JSONC patches that keep your formatting and comments):
@@ -53,8 +53,8 @@ and wires the project (AST/JSONC patches that keep your formatting and comments)
 Non-interactive (CI, scripts):
 
 ```bash
-npx ng-base init --yes --api-url https://api.acme.dev --storage memory --with auth,errors
-npx ng-base init --yes --all          # core + every module
+npx ngx-base-cli init --yes --api-url https://api.acme.dev --storage memory --with auth,errors
+npx ngx-base-cli init --yes --all          # core + every module
 ```
 
 | Flag | Description |
@@ -72,8 +72,8 @@ npx ng-base init --yes --all          # core + every module
 ## `add` — modules
 
 ```bash
-npx ng-base add auth errors      # one or more
-npx ng-base add                  # pick from a list
+npx ngx-base-cli add auth errors      # one or more
+npx ngx-base-cli add                  # pick from a list
 ```
 
 | Module | Files (in `core/` unless noted) | Wiring |
@@ -92,7 +92,7 @@ Files that already exist are **never replaced** without `--overwrite` (or a yes 
 ## `generate service`
 
 ```bash
-npx ng-base generate service user --endpoint /users     # alias: ng-base g service user
+npx ngx-base-cli generate service user --endpoint /users     # alias: ngx-base-cli g service user
 ```
 
 Writes `core/services/user.ts` (or `user.service.ts`) — a `UserService` that uses `inject(ApiClient)`. For components, pipes, directives etc. use `ng generate`.
@@ -164,7 +164,7 @@ The store is in-memory — add persistence there if the session must survive a r
 
 ## Naming and workspaces
 
-`init` targets the `angular.json` project from `--project`, else `defaultProject`, else the first application, and saves it in `.ng-base.json`. It detects the naming convention — `angular.json` schematics with `type: "component"`, existing `*.component.ts` files → `suffixed`; a suffixless `app.ts` or Angular ≥ 20 → `modern`:
+`init` targets the `angular.json` project from `--project`, else `defaultProject`, else the first application, and saves it in `.ngx-base-cli.json`. It detects the naming convention — `angular.json` schematics with `type: "component"`, existing `*.component.ts` files → `suffixed`; a suffixless `app.ts` or Angular ≥ 20 → `modern`:
 
 | | `modern` (Angular v20+ style guide) | `suffixed` |
 |-|-------------------------------------|------------|
@@ -174,7 +174,7 @@ The store is in-memory — add persistence there if the session must survive a r
 
 Use `--cwd <dir>` on any command to run it against another folder (monorepos).
 
-## `.ng-base.json`
+## `.ngx-base-cli.json`
 
 Settings `add` and `generate` need to write code that matches what `init` wrote. It has a `$schema` for editor autocomplete.
 
@@ -189,9 +189,9 @@ Settings `add` and `generate` need to write code that matches what `init` wrote.
 | `project` | detected | `angular.json` project |
 | `modules` | `[]` | installed modules |
 
-## Upgrading from ngx-base-cli 0.1
+## Upgrading from 0.1
 
-The package was renamed **ngx-base-cli → ng-base**. The first `ng-base` command in a project converts `.ngx-base-cli.json` into `.ng-base.json` (`generate*Interceptor` / `generateProjectStructure` flags become `modules`) and removes the old file. `.ngx-base-cli.manifest.json` is no longer used — delete it. `update`, `remove` and the `add <name> --type …` generators are gone: the code is yours after install, and `ng generate` covers components, pipes and directives. `init --preset` still works (deprecated) and maps to `--with`.
+The first command of 0.2 in a project rewrites `.ngx-base-cli.json` in the new format (`generate*Interceptor` / `generateProjectStructure` flags become `modules`). `.ngx-base-cli.manifest.json` is no longer used — delete it. `update`, `remove` and the `add <name> --type …` generators are gone: the code is yours after install, and `ng generate` covers components, pipes and directives. `init --preset` still works (deprecated) and maps to `--with`.
 
 ## Local development
 

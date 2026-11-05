@@ -1,4 +1,4 @@
-// Writes schema.json (JSON Schema for .ng-base.json) from CONFIG_FIELDS.
+// Writes schema.json (JSON Schema for .ngx-base-cli.json) from CONFIG_FIELDS.
 // Run via `npm run schema` (also part of `npm run build`).
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

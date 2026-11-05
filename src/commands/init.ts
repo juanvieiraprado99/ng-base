@@ -130,7 +130,7 @@ export async function runInit(
   opts: InitOptions = {},
 ): Promise<void> {
   const yes = opts.yes ?? false;
-  p.intro(pc.inverse(" ng-base init "));
+  p.intro(pc.inverse(" ngx-base-cli init "));
 
   if (
     opts.naming !== undefined &&
@@ -186,7 +186,7 @@ export async function runInit(
   if (existing) {
     p.log.info(
       pc.dim(
-        "Already initialized — re-installing the core; existing files are kept. Add modules with `ng-base add`.",
+        "Already initialized — re-installing the core; existing files are kept. Add modules with `ngx-base-cli add`.",
       ),
     );
   }
@@ -206,7 +206,7 @@ export async function runInit(
       [
         ws.projectName &&
           `Project: ${ws.projectName} (${ws.appDir}, prefix "${ws.prefix}")`,
-        `Naming: ${naming} (${forcedNaming ? "--naming" : existing ? ".ng-base.json" : detected.reason})`,
+        `Naming: ${naming} (${forcedNaming ? "--naming" : existing ? ".ngx-base-cli.json" : detected.reason})`,
         angularVersion && `Angular ${angularVersion}`,
       ]
         .filter(Boolean)
@@ -258,16 +258,16 @@ export async function runInit(
     [
       ...rest.map(
         (id) =>
-          `${pc.cyan(`${dlx} ng-base add ${id}`.padEnd(32))} ${pc.dim(getModule(id).description)}`,
+          `${pc.cyan(`${dlx} ngx-base-cli add ${id}`.padEnd(32))} ${pc.dim(getModule(id).description)}`,
       ),
-      `${pc.cyan(`${dlx} ng-base generate service user`.padEnd(32))} ${pc.dim("service using ApiClient")}`,
-      `${pc.cyan(`${dlx} ng-base doctor`.padEnd(32))} ${pc.dim("check the setup")}`,
+      `${pc.cyan(`${dlx} ngx-base-cli generate service user`.padEnd(32))} ${pc.dim("service using ApiClient")}`,
+      `${pc.cyan(`${dlx} ngx-base-cli doctor`.padEnd(32))} ${pc.dim("check the setup")}`,
     ].join("\n"),
     "More",
   );
   p.outro(
     pc.green(
-      "Done — the code is yours now: edit it freely, ng-base won't touch it again.",
+      "Done — the code is yours now: edit it freely, ngx-base-cli won't touch it again.",
     ),
   );
 }
@@ -315,7 +315,7 @@ async function promptInit(
   if (available.length === 0) return { config: out };
   const modules = await p.multiselect<ModuleId>({
     message:
-      "Add modules now? (space to toggle, enter to continue — you can `ng-base add` them later)",
+      "Add modules now? (space to toggle, enter to continue — you can `ngx-base-cli add` them later)",
     options: available.map((id) => ({
       value: id,
       label: id,

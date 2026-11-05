@@ -1,12 +1,12 @@
 {
-  "name": "ng-base",
+  "name": "ngx-base-cli",
   "version": "0.2.0-alpha.0",
   "description": "Copy an HTTP core (ApiClient, response cache, interceptors) and opt-in modules (auth, errors, logging, layout) into Angular apps — shadcn/ui style: the code is yours",
   "license": "MIT",
   "author": "",
   "type": "module",
   "bin": {
-    "ng-base": "./dist/index.js"
+    "ngx-base-cli": "./dist/index.js"
   },
   "files": [
     "dist",

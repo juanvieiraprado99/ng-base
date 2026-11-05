@@ -3,15 +3,13 @@ import fse from "fs-extra";
 import { NAMING_STYLES, type NamingStyle } from "./naming-style.js";
 import { validateRelativePath } from "./validators.js";
 
-export const CONFIG_FILENAME = ".ng-base.json";
-/** Config file written by ngx-base-cli 0.1 — migrated on read. */
-export const LEGACY_CONFIG_FILENAME = ".ngx-base-cli.json";
-/** Manifest written by ngx-base-cli 0.1 — no longer used. */
+export const CONFIG_FILENAME = ".ngx-base-cli.json";
+/** Manifest written by 0.1 — no longer used. */
 export const LEGACY_MANIFEST_FILENAME = ".ngx-base-cli.manifest.json";
 
 export type StorageEngine = "localStorage" | "sessionStorage" | "memory";
 
-/** Optional modules installable with `ng-base add` (the core comes with `init`). */
+/** Optional modules installable with `ngx-base-cli add` (the core comes with `init`). */
 export const MODULE_IDS = ["auth", "errors", "logging", "layout"] as const;
 export type ModuleId = (typeof MODULE_IDS)[number];
 
@@ -52,7 +50,7 @@ export function configPath(cwd: string): string {
 }
 
 /** Where the published JSON Schema lives (used as `$schema` in the config). */
-export const CONFIG_SCHEMA_URL = "https://unpkg.com/ng-base/schema.json";
+export const CONFIG_SCHEMA_URL = "https://unpkg.com/ngx-base-cli/schema.json";
 
 interface ConfigField {
   type: "string" | "boolean" | "array";
@@ -64,7 +62,7 @@ interface ConfigField {
 }
 
 /**
- * Single source of truth for `.ng-base.json`: drives runtime validation in
+ * Single source of truth for `.ngx-base-cli.json`: drives runtime validation in
  * `readNgBaseConfig` and the published JSON Schema (`buildConfigJsonSchema`).
  */
 export const CONFIG_FIELDS: { [K in keyof NgBaseConfig]: ConfigField } = {
@@ -108,7 +106,7 @@ export const CONFIG_FIELDS: { [K in keyof NgBaseConfig]: ConfigField } = {
     type: "array",
     enum: MODULE_IDS,
     description:
-      "Modules installed with `ng-base add` (auth, errors, logging, layout).",
+      "Modules installed with `ngx-base-cli add` (auth, errors, logging, layout).",
   },
 };
 
@@ -126,7 +124,7 @@ const LEGACY_FLAGS: Record<string, ModuleId | null> = {
   authTokenImportPath: null,
 };
 
-/** JSON Schema (draft-07) for `.ng-base.json`, built from CONFIG_FIELDS. */
+/** JSON Schema (draft-07) for `.ngx-base-cli.json`, built from CONFIG_FIELDS. */
 export function buildConfigJsonSchema(): Record<string, unknown> {
   const properties: Record<string, unknown> = {
     $schema: { type: "string" },
@@ -153,14 +151,14 @@ export function buildConfigJsonSchema(): Record<string, unknown> {
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
     $id: CONFIG_SCHEMA_URL,
-    title: "ng-base config (.ng-base.json)",
+    title: "ngx-base-cli config (.ngx-base-cli.json)",
     type: "object",
     properties,
     additionalProperties: false,
   };
 }
 
-const warn = (msg: string) => console.warn(`[ng-base] ${msg}`);
+const warn = (msg: string) => console.warn(`[ngx-base-cli] ${msg}`);
 
 function typeOf(value: unknown): ConfigField["type"] | string {
   return Array.isArray(value) ? "array" : typeof value;
@@ -251,31 +249,27 @@ function parseJsonFile(raw: string, file: string): Record<string, unknown> {
   throw new Error(`${file} is not a valid JSON object. Fix it and re-run.`);
 }
 
+/** Whether a parsed config still uses the 0.1 `generate*` flags. */
+export function isLegacyConfig(parsed: Record<string, unknown>): boolean {
+  return Object.keys(parsed).some((key) => key in LEGACY_FLAGS);
+}
+
 /**
- * Reads `.ng-base.json`. A 0.1 `.ngx-base-cli.json` is migrated: converted to
- * the modules format, written as `.ng-base.json` and removed.
+ * Reads `.ngx-base-cli.json`. A 0.1 config (`generate*` flags, no `modules`)
+ * is migrated in place to the modules format.
  */
 export async function readNgBaseConfig(
   cwd: string,
 ): Promise<NgBaseConfig | null> {
   const p = configPath(cwd);
-  if (await fse.pathExists(p)) {
-    return parseConfig(
-      parseJsonFile(await fse.readFile(p, "utf8"), CONFIG_FILENAME),
-    );
-  }
+  if (!(await fse.pathExists(p))) return null;
+  const parsed = parseJsonFile(await fse.readFile(p, "utf8"), CONFIG_FILENAME);
+  if (!isLegacyConfig(parsed)) return parseConfig(parsed);
 
-  const legacyPath = path.join(cwd, LEGACY_CONFIG_FILENAME);
-  if (!(await fse.pathExists(legacyPath))) return null;
-  const legacy = parseJsonFile(
-    await fse.readFile(legacyPath, "utf8"),
-    LEGACY_CONFIG_FILENAME,
-  );
-  const config = parseConfig(migrateLegacyConfig(legacy));
+  const config = parseConfig(migrateLegacyConfig(parsed));
   await writeNgBaseConfig(cwd, config);
-  await fse.remove(legacyPath);
   warn(
-    `Migrated ${LEGACY_CONFIG_FILENAME} → ${CONFIG_FILENAME} (modules: ${config.modules.join(", ") || "none"}).`,
+    `Migrated ${CONFIG_FILENAME} to the 0.2 format (modules: ${config.modules.join(", ") || "none"}).`,
   );
   return config;
 }

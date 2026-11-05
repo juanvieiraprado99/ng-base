@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://unpkg.com/ng-base/schema.json",
-  "title": "ng-base config (.ng-base.json)",
+  "$id": "https://unpkg.com/ngx-base-cli/schema.json",
+  "title": "ngx-base-cli config (.ngx-base-cli.json)",
   "type": "object",
   "properties": {
     "$schema": {
@@ -57,7 +57,7 @@
     },
     "modules": {
       "type": "array",
-      "description": "Modules installed with `ng-base add` (auth, errors, logging, layout).",
+      "description": "Modules installed with `ngx-base-cli add` (auth, errors, logging, layout).",
       "items": {
         "type": "string",
         "enum": [
