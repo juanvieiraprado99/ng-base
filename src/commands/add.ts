@@ -65,7 +65,12 @@ export async function runAdd(
     featureName,
     cwd,
     config.outputDir,
-    { ...opts, naming: config.naming, prefix: ws.prefix },
+    {
+      ...opts,
+      naming: config.naming,
+      prefix: ws.prefix,
+      sharedDir: `${ws.appDir}/shared`,
+    },
   );
   if (!plan.ok) {
     p.outro(pc.red(plan.error));

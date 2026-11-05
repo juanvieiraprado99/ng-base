@@ -238,3 +238,30 @@ describe("FEATURES registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe("error interceptor template", () => {
+  const render = async (generateAuthInterceptor: boolean) => {
+    const targets = buildGenerationTargets(CWD, {
+      ...PRESETS.standard,
+      generateAuthInterceptor,
+      generateErrorInterceptor: true,
+    });
+    const t = targets.find((x) => x.template === "error.interceptor.ts.tpl");
+    if (!t) throw new Error("error interceptor not planned");
+    return renderGenerationTarget(t);
+  };
+
+  it("with auth: a 401 on an authenticated request clears the token", async () => {
+    const out = await render(true);
+    expect(out).toContain("isAuthRequest(req, inject(AUTH_ALLOWED_URLS))");
+    expect(out).toContain("tokenStore.clear();");
+    expect(out).not.toContain("const endsSession = true;");
+  });
+
+  it("without auth: no AuthTokenStore dependency, any 401 redirects", async () => {
+    const out = await render(false);
+    expect(out).not.toContain("AuthTokenStore");
+    expect(out).not.toContain("auth.tokens");
+    expect(out).toContain("const endsSession = true;");
+  });
+});

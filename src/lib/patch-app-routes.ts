@@ -2,11 +2,10 @@ import path from "node:path";
 import fse from "fs-extra";
 import {
   type ArrayLiteralExpression,
-  Project,
-  QuoteKind,
   type SourceFile,
   SyntaxKind,
 } from "ts-morph";
+import { createPatchSourceFile } from "./ts-project.js";
 import { DEFAULT_WORKSPACE, type Workspace } from "./workspace.js";
 
 export interface PatchAppRoutesResult {
@@ -57,11 +56,7 @@ export async function patchAppRoutes(
   }
 
   const content = await fse.readFile(file, "utf8");
-  const project = new Project({
-    useInMemoryFileSystem: true,
-    manipulationSettings: { quoteKind: QuoteKind.Single },
-  });
-  const sf = project.createSourceFile("app.routes.ts", content);
+  const sf = createPatchSourceFile("app.routes.ts", content);
   const arr = findRoutesArray(sf);
   if (!arr) return { exists: true, patched: false, ok: false };
 
@@ -79,12 +74,12 @@ export async function patchAppRoutes(
     ensureNamedImport(sf, spec, name);
     if (!hasElement(`...${name}`)) {
       const wi = wildcardIndex();
-      if (wi === -1) arr.addElement(`...${name}`);
-      else arr.insertElement(wi, `...${name}`);
+      if (wi === -1) arr.addElement(`...${name}`, { useNewLines: true });
+      else arr.insertElement(wi, `...${name}`, { useNewLines: true });
     }
   }
 
-  if (wildcardIndex() === -1) arr.addElement(WILDCARD);
+  if (wildcardIndex() === -1) arr.addElement(WILDCARD, { useNewLines: true });
 
   const after = sf.getFullText();
   if (after === content) return { exists: true, patched: false, ok: true };

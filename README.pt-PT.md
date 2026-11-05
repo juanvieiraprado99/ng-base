@@ -194,7 +194,7 @@ O interceptor adiciona `Authorization: Bearer <token>` **apenas a URLs em `AUTH_
 this.api.post('/auth/login', credentials, { context: skipAuth() });
 ```
 
-O `auth.clear()` também limpa o cache de respostas, para o utilizador seguinte nunca ver dados em cache do anterior. O `authGuard` e o error interceptor redirecionam para `LOGIN_ROUTE` (predefinição `/login`); substitui-o nos `providers`: `{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' }`. O store é em memória — adiciona persistência aí se precisares que a sessão sobreviva a um reload.
+O `auth.clear()` limpa o cache de respostas, e o `auth.set()` também, sempre que o token muda — o cache pode sobreviver ao token em memória (p. ex. em `localStorage` depois de um reload), por isso um novo login nunca vê dados em cache do utilizador anterior. Quando o error interceptor recebe um **401 de um pedido que o auth interceptor autentica** (na allowlist, sem `skipAuth()`), limpa o token e redireciona; 401 de APIs de terceiros ou de chamadas `skipAuth()`, como um login falhado, são só relançados. O `authGuard` e o error interceptor redirecionam para `LOGIN_ROUTE` (predefinição `/login`); substitui-o nos `providers`: `{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' }`. O store é em memória — adiciona persistência aí se precisares que a sessão sobreviva a um reload.
 
 ## Ficheiros gerados — referência
 
@@ -226,6 +226,8 @@ Serve pedidos **GET** marcados a partir do `CacheService` e guarda as respostas 
 ```typescript
 this.http.get('/api/countries', { context: withCache({ ttlMinutes: 60 }) });
 ```
+
+Só respostas JSON vão para o cache (pedidos com `responseType: 'blob' | 'text' | 'arraybuffer'` vão sempre à rede). O `ApiClient.url()` deixa URLs absolutas (`https://…`, `//…`) intactas e junta base + endpoint com uma única `/`.
 
 ### `services/cache.service.ts` + `services/cache.storage.ts`
 
@@ -261,7 +263,7 @@ Gera um artefacto de feature dentro do `outputDir` configurado. O tipo é escolh
 | `--type` | Ficheiro(s) gerado(s) (`outputDir = src/app/core`) |
 |----------|----------------------------------------------------|
 | `service` (predefinido) | `core/services/<kebab>.service.ts` (`inject(ApiClient)`, endpoint `/<kebab>`) |
-| `component` | `core/components/<kebab>/<kebab>.component.ts` (+ `.html` / folha de estilos) |
+| `component` | `shared/components/<kebab>/<kebab>.component.ts` (+ `.html` / folha de estilos) — UI reutilizável fica em `shared/`, o `core/` é para singletons da app |
 | `guard` | `core/guards/<kebab>.guard.ts` (`CanActivateFn` funcional) |
 | `resolver` | `core/resolvers/<kebab>.resolver.ts` (`ResolveFn` funcional) |
 | `pipe` | `core/pipes/<kebab>.pipe.ts` (`PipeTransform`, `name: '<camel>'`) |
@@ -356,7 +358,7 @@ Apaga um artefacto gerado e remove as suas entradas do manifest. Mesmo `-t, --ty
 
 ```bash
 npx ngx-base-cli remove user --type pipe
-npx ngx-base-cli rm user --type component        # remove core/components/user/
+npx ngx-base-cli rm user --type component        # remove shared/components/user/ (ou o antigo core/components/user/)
 npx ngx-base-cli remove order-status --type enum
 ```
 

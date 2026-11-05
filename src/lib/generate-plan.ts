@@ -253,8 +253,13 @@ export const FEATURES: readonly FeatureSpec[] = [
   {
     id: "error-interceptor",
     enabled: (c) => c.generateErrorInterceptor,
-    targets: ({ target, core }) => [
-      target(core("errorInterceptor"), "error.interceptor.ts.tpl"),
+    targets: ({ target, core, config }) => [
+      // With the auth interceptor, a 401 from an authenticated request also
+      // clears AuthTokenStore; without it any 401 just redirects to login.
+      target(core("errorInterceptor"), "error.interceptor.ts.tpl", {
+        AUTH: String(config.generateAuthInterceptor),
+        NO_AUTH: String(!config.generateAuthInterceptor),
+      }),
     ],
   },
   {

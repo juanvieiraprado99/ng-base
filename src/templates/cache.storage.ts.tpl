@@ -37,8 +37,8 @@ export function browserStorage(kind: "local" | "session"): CacheStorage | null {
 /**
  * Storage backing CacheService. Swap it in providers, e.g.
  * `{ provide: CACHE_STORAGE, useFactory: () => browserStorage("session") }`.
- * Avoid `memoryStorage()` for user-specific data under SSR: a root singleton is
- * shared by every request the server renders.
+ * With SSR each server render gets its own root injector, so `memoryStorage()`
+ * is not shared between requests (and browserStorage is a no-op there).
  */
 export const CACHE_STORAGE = new InjectionToken<CacheStorage | null>(
   "CACHE_STORAGE",

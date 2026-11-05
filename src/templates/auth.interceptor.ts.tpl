@@ -1,11 +1,7 @@
 import { HttpInterceptorFn } from "@angular/common/http";
 import { inject } from "@angular/core";
 import { AuthTokenStore } from "{{IMPORT_AUTH_STORE}}";
-import {
-  AUTH_ALLOWED_URLS,
-  isAllowedUrl,
-  SKIP_AUTH,
-} from "{{IMPORT_AUTH_TOKENS}}";
+import { AUTH_ALLOWED_URLS, isAuthRequest } from "{{IMPORT_AUTH_TOKENS}}";
 
 /**
  * Adds `Authorization: Bearer <token>` only to requests whose URL matches
@@ -14,13 +10,9 @@ import {
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const token = inject(AuthTokenStore).token();
-  if (!token || req.context.get(SKIP_AUTH)) return next(req);
-
-  const base = globalThis.location?.origin ?? "http://localhost";
-  const allowed = inject(AUTH_ALLOWED_URLS).some((rule) =>
-    isAllowedUrl(req.url, rule, base),
-  );
-  if (!allowed) return next(req);
+  if (!token || !isAuthRequest(req, inject(AUTH_ALLOWED_URLS))) {
+    return next(req);
+  }
 
   return next(
     req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }),

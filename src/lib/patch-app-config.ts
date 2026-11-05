@@ -4,14 +4,13 @@ import {
   type ArrayLiteralExpression,
   type CallExpression,
   type ObjectLiteralExpression,
-  Project,
-  QuoteKind,
   type SourceFile,
   SyntaxKind,
 } from "ts-morph";
 import type { NgxBaseCliConfig } from "./config.js";
 import { apiTokensFile, interceptorBindings } from "./generate-plan.js";
 import { importBetweenFiles } from "./import-paths.js";
+import { createPatchSourceFile } from "./ts-project.js";
 import { DEFAULT_WORKSPACE, type Workspace } from "./workspace.js";
 
 export interface PatchAppConfigResult {
@@ -132,6 +131,7 @@ function patchProvideHttpClient(
       interceptorNames.length > 0
         ? `provideHttpClient(withInterceptors([${ix}]))`
         : "provideHttpClient()",
+      { useNewLines: true },
     );
     return;
   }
@@ -159,6 +159,7 @@ function patchBaseApiProvider(arr: ArrayLiteralExpression): void {
   if (!obj) {
     arr.addElement(
       "{ provide: BASE_API_URL, useValue: environment.baseApiUrl }",
+      { useNewLines: true },
     );
     return;
   }
@@ -194,11 +195,7 @@ export async function patchAppConfigForHttp(
 
   const content = await fse.readFile(appConfigPath, "utf8");
 
-  const project = new Project({
-    useInMemoryFileSystem: true,
-    manipulationSettings: { quoteKind: QuoteKind.Single },
-  });
-  const sf = project.createSourceFile("app.config.ts", content);
+  const sf = createPatchSourceFile("app.config.ts", content);
   const before = sf.getFullText();
 
   const bindings = interceptorBindings(config);

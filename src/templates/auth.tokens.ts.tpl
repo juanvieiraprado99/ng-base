@@ -1,4 +1,8 @@
-import { HttpContext, HttpContextToken } from "@angular/common/http";
+import {
+  HttpContext,
+  HttpContextToken,
+  type HttpRequest,
+} from "@angular/common/http";
 import { inject, InjectionToken } from "@angular/core";
 import { BASE_API_URL } from "{{IMPORT_API_TOKENS}}";
 
@@ -46,4 +50,17 @@ export function isAllowedUrl(url: string, allowed: string, base: string): boolea
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether `req` is one the auth interceptor authenticates: not `skipAuth()` and
+ * its URL is in `allowedUrls`. Relative URLs resolve against the page origin.
+ */
+export function isAuthRequest(
+  req: HttpRequest<unknown>,
+  allowedUrls: readonly string[],
+): boolean {
+  if (req.context.get(SKIP_AUTH)) return false;
+  const base = globalThis.location?.origin ?? "http://localhost";
+  return allowedUrls.some((rule) => isAllowedUrl(req.url, rule, base));
 }

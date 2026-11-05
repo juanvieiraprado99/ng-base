@@ -16,7 +16,13 @@ export class AuthTokenStore {
   readonly token = this._token.asReadonly();
   readonly isAuthenticated = computed(() => this._token() !== null);
 
+  /**
+   * Sets the token after login (or a refresh). A different token may mean a
+   * different user, so cached responses are dropped — the cache can outlive the
+   * in-memory token (e.g. localStorage after a reload).
+   */
   set(token: string | null): void {
+    if (token !== this._token()) this.cache.clear();
     this._token.set(token);
   }
 

@@ -59,9 +59,16 @@ export class ApiClient {
   private readonly cache = inject(CacheService);
   private readonly baseApiUrl = inject(BASE_API_URL, { optional: true });
 
-  /** Absolute URL for an API-relative endpoint. */
+  /**
+   * Absolute URL for an API-relative endpoint. Absolute URLs (`https://…`,
+   * `//cdn…`) are returned as-is; exactly one `/` joins base and endpoint.
+   */
   url(endpoint: string): string {
-    return this.baseApiUrl ? `${this.baseApiUrl}${endpoint}` : endpoint;
+    if (!this.baseApiUrl || /^([a-z][a-z\d+.-]*:)?\/\//i.test(endpoint)) {
+      return endpoint;
+    }
+    if (!endpoint) return this.baseApiUrl;
+    return `${this.baseApiUrl.replace(/\/+$/, "")}/${endpoint.replace(/^\/+/, "")}`;
   }
 
   get<T>(endpoint: string, options: GetOptions = {}): Observable<T> {

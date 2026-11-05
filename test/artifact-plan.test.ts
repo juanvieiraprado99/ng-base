@@ -144,3 +144,23 @@ describe("planArtifactFiles", () => {
     expect(dir.files[0].vars.SELECTOR).toBe("acmeHighlight");
   });
 });
+
+describe("component location", () => {
+  it("components go to sharedDir/components when given", async () => {
+    const res = await planArtifactFiles("component", "user-card", cwd, outDir, {
+      naming: "modern",
+      sharedDir: "src/app/shared",
+    });
+    if (!res.ok) throw new Error("plan failed");
+    expect(posix(res.files[0].outPath)).toContain(
+      "src/app/shared/components/user-card/user-card.ts",
+    );
+    // other artifacts stay under outputDir
+    const pipe = await planArtifactFiles("pipe", "truncate", cwd, outDir, {
+      naming: "modern",
+      sharedDir: "src/app/shared",
+    });
+    if (!pipe.ok) throw new Error("plan failed");
+    expect(posix(pipe.files[0].outPath)).toContain("src/app/core/pipes/");
+  });
+});

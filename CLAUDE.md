@@ -76,6 +76,7 @@ Generated core (all presets): `tokens/api.tokens.ts` (`BASE_API_URL`), `services
 | `src/lib/render-target.ts` | Writes a single `GenerationTarget` to disk (mkdir + write) |
 | `src/lib/parse-jsonc.ts` | `parseJsonWithComments` (jsonc-parser: comments + trailing commas) and `setJsonValue` — edits one JSON path in place, preserving comments/formatting. Use it for any write to `tsconfig.json` / `angular.json` instead of `JSON.stringify` |
 | `src/lib/patch-tsconfig.ts` | `planTsconfigAliases` / `applyTsconfigAliases` — the `paths` alias patch used by `init` |
+| `src/lib/ts-project.ts` | `createPatchSourceFile()` — ts-morph source file for AST patches (`app.config.ts`, `app.routes.ts`) using the file's own indentation; insert array elements with `{ useNewLines: true }` |
 
 ### Build note
 

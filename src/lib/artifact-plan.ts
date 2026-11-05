@@ -27,6 +27,12 @@ export interface AddOptions {
   naming?: NamingStyle;
   /** Selector prefix from angular.json (default "app"). */
   prefix?: string;
+  /**
+   * Project-relative folder for reusable UI. Components go to
+   * `<sharedDir>/components/` (core is for app-wide singletons); without it
+   * they fall back to `<outputDir>/components/`.
+   */
+  sharedDir?: string;
 }
 
 export type PlanResult =
@@ -115,7 +121,9 @@ export async function planArtifactFiles(
   const prefix = opts.prefix ?? "app";
   const kebab = kebabName(rawName);
   const { folder, base, symbol } = artifactName(type, rawName, naming);
-  const dir = path.join(cwd, outputDir, folder);
+  const baseDir =
+    type === "component" && opts.sharedDir ? opts.sharedDir : outputDir;
+  const dir = path.join(cwd, baseDir, folder);
   const outPath = path.join(dir, `${base}.ts`);
   const single = (
     template: string,

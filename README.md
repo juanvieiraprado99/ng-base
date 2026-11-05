@@ -194,7 +194,7 @@ The interceptor adds `Authorization: Bearer <token>` **only to URLs in `AUTH_ALL
 this.api.post('/auth/login', credentials, { context: skipAuth() });
 ```
 
-`auth.clear()` also wipes the response cache, so the next user never sees cached data from the previous one. `authGuard` and the error interceptor redirect to `LOGIN_ROUTE` (default `/login`); override it in `providers`: `{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' }`. The store is in-memory — add persistence there if you need the session to survive a reload.
+`auth.clear()` wipes the response cache, and so does `auth.set()` whenever the token changes — the cache can outlive the in-memory token (e.g. in `localStorage` after a reload), so a new login never sees the previous user's cached data. When the error interceptor gets a **401 for a request the auth interceptor authenticates** (allowlisted, not `skipAuth()`), it clears the token and redirects; 401s from third-party APIs or from `skipAuth()` calls such as a failed login are just re-thrown. `authGuard` and the error interceptor redirect to `LOGIN_ROUTE` (default `/login`); override it in `providers`: `{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' }`. The store is in-memory — add persistence there if you need the session to survive a reload.
 
 ## Generated files — reference
 
@@ -226,6 +226,8 @@ Serves opted-in **GET** requests from `CacheService` and stores successful respo
 ```typescript
 this.http.get('/api/countries', { context: withCache({ ttlMinutes: 60 }) });
 ```
+
+Only JSON responses are cached (`responseType: 'blob' | 'text' | 'arraybuffer'` requests always hit the network). `ApiClient.url()` leaves absolute URLs (`https://…`, `//…`) untouched and joins base + endpoint with a single `/`.
 
 ### `services/cache.service.ts` + `services/cache.storage.ts`
 
@@ -261,7 +263,7 @@ Generates a feature artifact under the configured `outputDir`. The artifact type
 | `--type` | Generated file(s) (`outputDir = src/app/core`) |
 |----------|-------------------------------------------------|
 | `service` (default) | `core/services/<kebab>.service.ts` (`inject(ApiClient)`, endpoint `/<kebab>`) |
-| `component` | `core/components/<kebab>/<kebab>.component.ts` (+ `.html` / stylesheet) |
+| `component` | `shared/components/<kebab>/<kebab>.component.ts` (+ `.html` / stylesheet) — reusable UI lives in `shared/`, `core/` is for app-wide singletons |
 | `guard` | `core/guards/<kebab>.guard.ts` (functional `CanActivateFn`) |
 | `resolver` | `core/resolvers/<kebab>.resolver.ts` (functional `ResolveFn`) |
 | `pipe` | `core/pipes/<kebab>.pipe.ts` (`PipeTransform`, `name: '<camel>'`) |
@@ -387,7 +389,7 @@ Deletes a generated artifact and drops its entries from the manifest. Same `-t, 
 
 ```bash
 npx ngx-base-cli remove user --type pipe
-npx ngx-base-cli rm user --type component        # removes core/components/user/
+npx ngx-base-cli rm user --type component        # removes shared/components/user/ (or the legacy core/components/user/)
 npx ngx-base-cli remove order-status --type enum
 ```
 

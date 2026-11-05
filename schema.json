@@ -20,7 +20,10 @@
     "importStyle": {
       "type": "string",
       "description": "alias = @core/@layout/@pages/@shared (tsconfig paths); relative = ../ imports.",
-      "enum": ["alias", "relative"],
+      "enum": [
+        "alias",
+        "relative"
+      ],
       "default": "alias"
     },
     "useHttpResource": {
@@ -31,7 +34,11 @@
     "storageEngine": {
       "type": "string",
       "description": "CACHE_STORAGE backend for the response cache (SSR-safe).",
-      "enum": ["localStorage", "sessionStorage", "memory"],
+      "enum": [
+        "localStorage",
+        "sessionStorage",
+        "memory"
+      ],
       "default": "localStorage"
     },
     "generateAuthInterceptor": {
@@ -74,7 +81,10 @@
     "naming": {
       "type": "string",
       "description": "File/class naming: \"modern\" (user-card.ts, Angular v20 style guide) or \"suffixed\" (user-card.component.ts). Missing = \"suffixed\".",
-      "enum": ["modern", "suffixed"],
+      "enum": [
+        "modern",
+        "suffixed"
+      ],
       "default": "suffixed"
     },
     "project": {

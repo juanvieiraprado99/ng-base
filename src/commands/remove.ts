@@ -6,6 +6,7 @@ import { artifactName, planArtifactFiles } from "../lib/artifact-plan.js";
 import { type NgxBaseCliConfig, readNgxBaseConfig } from "../lib/config.js";
 import { manifestKey, readManifest, writeManifest } from "../lib/manifest.js";
 import { ADD_TYPES, type AddType, kebabName } from "../lib/naming.js";
+import { resolveWorkspace } from "../lib/workspace.js";
 
 export async function runRemove(
   featureName: string,
@@ -38,11 +39,16 @@ export async function runRemove(
   }
 
   const kebab = kebabName(featureName);
+  const ws = await resolveWorkspace(cwd, config.project);
   // A component's style/template flags change which files exist, so target the
-  // whole feature directory rather than guessing the original flags.
+  // whole feature directory rather than guessing the original flags. Components
+  // live in shared/components (older versions used core/components).
   const targets =
     type === "component"
-      ? [path.join(cwd, config.outputDir, "components", kebab)]
+      ? [
+          path.join(cwd, ws.appDir, "shared", "components", kebab),
+          path.join(cwd, config.outputDir, "components", kebab),
+        ]
       : await resolveArtifactPaths(type, featureName, cwd, config);
 
   if (targets === null) {

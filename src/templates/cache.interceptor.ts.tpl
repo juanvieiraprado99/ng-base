@@ -32,11 +32,14 @@ export function withCache(
 /**
  * Serves opted-in GET requests from CacheService and stores successful
  * responses. Keyed by `urlWithParams`, so different query strings are cached
- * separately. Works for HttpClient and httpResource alike.
+ * separately. Works for HttpClient and httpResource alike. Only JSON responses
+ * are cached (blob / text / arraybuffer bodies do not survive JSON storage).
  */
 export const cacheInterceptor: HttpInterceptorFn = (req, next) => {
   const options = req.context.get(CACHE_REQUEST);
-  if (!options || req.method !== "GET") return next(req);
+  if (!options || req.method !== "GET" || req.responseType !== "json") {
+    return next(req);
+  }
 
   const cache = inject(CacheService);
   const key = req.urlWithParams;
