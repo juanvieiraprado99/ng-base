@@ -1,9 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`init --preset full --yes on an Angular 22 app > generates the full core, patches the project, and is stable 1`] = `
+exports[`init → add on an Angular 22 app > add layout logging errors auth wires everything up 1`] = `
 [
-  ".ngx-base-cli.json",
-  ".ngx-base-cli.manifest.json",
+  ".ng-base.json",
   "angular.json",
   "package.json",
   "src/app/app.config.ts",
@@ -14,15 +13,14 @@ exports[`init --preset full --yes on an Angular 22 app > generates the full core
   "src/app/core/interceptors/auth-interceptor.ts",
   "src/app/core/interceptors/cache-interceptor.ts",
   "src/app/core/interceptors/error-interceptor.ts",
+  "src/app/core/interceptors/logging-interceptor.ts",
   "src/app/core/interfaces/cache.model.ts",
   "src/app/core/services/api-client.ts",
   "src/app/core/services/auth-token-store.ts",
   "src/app/core/services/cache-storage.ts",
   "src/app/core/services/cache.ts",
-  "src/app/core/services/index.ts",
   "src/app/core/tokens/api-tokens.ts",
   "src/app/core/tokens/auth-tokens.ts",
-  "src/app/core/tokens/routes-tokens.ts",
   "src/app/layout/private/private-layout.html",
   "src/app/layout/private/private-layout.ts",
   "src/app/layout/public/public-layout.html",
@@ -31,6 +29,27 @@ exports[`init --preset full --yes on an Angular 22 app > generates the full core
   "src/app/pages/landing-page/landing-page.ts",
   "src/app/routes/private.routes.ts",
   "src/app/routes/public.routes.ts",
+  "src/environments/environment.prod.ts",
+  "src/environments/environment.ts",
+  "tsconfig.json",
+]
+`;
+
+exports[`init → add on an Angular 22 app > init installs only the core and patches the project 1`] = `
+[
+  ".ng-base.json",
+  "angular.json",
+  "package.json",
+  "src/app/app.config.ts",
+  "src/app/app.html",
+  "src/app/app.routes.ts",
+  "src/app/app.ts",
+  "src/app/core/interceptors/cache-interceptor.ts",
+  "src/app/core/interfaces/cache.model.ts",
+  "src/app/core/services/api-client.ts",
+  "src/app/core/services/cache-storage.ts",
+  "src/app/core/services/cache.ts",
+  "src/app/core/tokens/api-tokens.ts",
   "src/environments/environment.prod.ts",
   "src/environments/environment.ts",
   "tsconfig.json",

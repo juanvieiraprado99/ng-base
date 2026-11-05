@@ -2,10 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_NGX_BASE_CONFIG,
-  type NgxBaseCliConfig,
-} from "../src/lib/config";
+import { DEFAULT_CONFIG, type NgBaseConfig } from "../src/lib/config";
 import { patchAppConfigForHttp } from "../src/lib/patch-app-config";
 
 let dir: string;
@@ -27,15 +24,15 @@ function read(p: string): Promise<string> {
   return fse.readFile(p, "utf8");
 }
 
-const withAuth: NgxBaseCliConfig = {
-  ...DEFAULT_NGX_BASE_CONFIG,
+const withAuth: NgBaseConfig = {
+  ...DEFAULT_CONFIG,
   importStyle: "relative",
-  generateAuthInterceptor: true,
+  modules: ["auth"],
 };
 
 describe("patchAppConfigForHttp", () => {
   it("reports absent when there is no app.config.ts", async () => {
-    const res = await patchAppConfigForHttp(dir, DEFAULT_NGX_BASE_CONFIG);
+    const res = await patchAppConfigForHttp(dir, DEFAULT_CONFIG);
     expect(res).toEqual({ patched: false, appConfigExists: false });
   });
 
@@ -146,7 +143,7 @@ export const appConfig: ApplicationConfig = {
 };
 `,
     );
-    const res = await patchAppConfigForHttp(dir, DEFAULT_NGX_BASE_CONFIG);
+    const res = await patchAppConfigForHttp(dir, DEFAULT_CONFIG);
     expect(res.patched).toBe(true);
     const out = await read(p);
     expect(out).toContain(
@@ -172,7 +169,7 @@ export const appConfig: ApplicationConfig = {
 };
 `,
     );
-    await patchAppConfigForHttp(dir, DEFAULT_NGX_BASE_CONFIG);
+    await patchAppConfigForHttp(dir, DEFAULT_CONFIG);
     const out = await read(p);
     expect(out).not.toContain("./core/services/cache.service");
     expect(out).toContain(
@@ -180,5 +177,62 @@ export const appConfig: ApplicationConfig = {
     );
     expect(out.match(/BASE_API_URL,? /g)?.length).toBeGreaterThan(0);
     expect(out.match(/import \{ BASE_API_URL/g)).toHaveLength(1);
+  });
+});
+
+describe("adding modules to an existing app.config.ts", () => {
+  const relative = { ...DEFAULT_CONFIG, importStyle: "relative" as const };
+
+  it("inserts a module's interceptor at its canonical position, keeping custom ones", async () => {
+    const p = await writeAppConfig(
+      `import { ApplicationConfig } from '@angular/core';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { myInterceptor } from './my';
+
+export const appConfig: ApplicationConfig = {
+  providers: [provideHttpClient(withInterceptors([authInterceptor, cacheInterceptor, myInterceptor]))],
+};
+`,
+    );
+    await patchAppConfigForHttp(dir, {
+      ...relative,
+      modules: ["auth", "errors"],
+    });
+    expect(await read(p)).toMatch(
+      /withInterceptors\(\[authInterceptor, errorInterceptor, cacheInterceptor, myInterceptor\]\)/,
+    );
+  });
+
+  it("puts auth first when it is added after the core", async () => {
+    const p = await writeAppConfig(
+      `import { ApplicationConfig } from '@angular/core';
+
+export const appConfig: ApplicationConfig = {
+  providers: [],
+};
+`,
+    );
+    await patchAppConfigForHttp(dir, relative);
+    await patchAppConfigForHttp(dir, { ...relative, modules: ["logging"] });
+    await patchAppConfigForHttp(dir, {
+      ...relative,
+      modules: ["logging", "auth"],
+    });
+    expect(await read(p)).toMatch(
+      /withInterceptors\(\[authInterceptor, loggingInterceptor, cacheInterceptor\]\)/,
+    );
+  });
+
+  it("returns a manual snippet when there is no providers array", async () => {
+    const p = await writeAppConfig("export const appConfig = buildConfig();\n");
+    const res = await patchAppConfigForHttp(dir, {
+      ...relative,
+      modules: ["auth"],
+    });
+    expect(res.patched).toBe(false);
+    expect(res.manual).toContain(
+      "withInterceptors([authInterceptor, cacheInterceptor])",
+    );
+    expect(await read(p)).toBe("export const appConfig = buildConfig();\n");
   });
 });

@@ -76,7 +76,6 @@ export interface CoreFiles {
   cacheInterface: string;
   apiTokens: string;
   authTokens: string;
-  routesTokens: string;
   apiClient: string;
   cacheService: string;
   cacheStorage: string;
@@ -92,7 +91,6 @@ const SUFFIXED_CORE: CoreFiles = {
   cacheInterface: "interfaces/cache.interface.ts",
   apiTokens: "tokens/api.tokens.ts",
   authTokens: "tokens/auth.tokens.ts",
-  routesTokens: "tokens/routes.tokens.ts",
   apiClient: "services/api-client.ts",
   cacheService: "services/cache.service.ts",
   cacheStorage: "services/cache.storage.ts",
@@ -108,7 +106,6 @@ const MODERN_CORE: CoreFiles = {
   cacheInterface: "interfaces/cache.model.ts",
   apiTokens: "tokens/api-tokens.ts",
   authTokens: "tokens/auth-tokens.ts",
-  routesTokens: "tokens/routes-tokens.ts",
   apiClient: "services/api-client.ts",
   cacheService: "services/cache.ts",
   cacheStorage: "services/cache-storage.ts",

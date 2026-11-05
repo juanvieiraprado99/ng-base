@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// End-to-end check: `ng new` → `ngx-base-cli init` → `ng build` (+ a type-check
+// End-to-end check: `ng new` → `ng-base init` + `add` → `ng build` (+ a type-check
 // of every generated file, including ones nothing imports yet).
 //
 //   npm run build && node scripts/e2e.mjs [scenario ...] [--keep] [--workdir <dir>]
 //
-// Scenarios (default: all): modern-full, suffixed-relative-ssr.
+// Scenarios (default: all): modern, suffixed-relative-ssr.
 // Needs network for `ng new` (npm install). Used by the CI `e2e` job.
 
 import { execFileSync } from "node:child_process";
@@ -24,7 +24,7 @@ const wdIdx = args.indexOf("--workdir");
 const workdir =
   wdIdx >= 0
     ? path.resolve(args[wdIdx + 1])
-    : fs.mkdtempSync(path.join(os.tmpdir(), "ngx-base-e2e-"));
+    : fs.mkdtempSync(path.join(os.tmpdir(), "ng-base-e2e-"));
 const skip = new Set(wdIdx >= 0 ? [args[wdIdx + 1]] : []);
 const requested = args.filter((a) => !a.startsWith("--") && !skip.has(a));
 
@@ -35,7 +35,7 @@ function run(cmd, cmdArgs, cwd) {
   execFileSync(cmd, cmdArgs, { cwd, stdio: "inherit", shell: isWin });
 }
 
-const ngx = (cwd, ...a) =>
+const ngb = (cwd, ...a) =>
   run(process.execPath, [cli, ...a, "--cwd", cwd], cwd);
 const ng = (cwd, ...a) => run("npx", ["ng", ...a], cwd);
 
@@ -80,50 +80,44 @@ function build(app) {
   run("npx", ["tsc", "-p", "tsconfig.app.json", "--noEmit"], app);
 }
 
-function assertStableUpdate(app) {
+/** sha256 of the project files — `add` of an installed module must not touch them. */
+function assertUnchanged(app, fn, what) {
   const before = treeHash(app);
-  ngx(app, "update", "--yes");
-  if (treeHash(app) !== before) {
-    throw new Error("`update` right after `init` changed files");
-  }
-}
-
-function patchConfig(app, patch) {
-  const file = path.join(app, ".ngx-base-cli.json");
-  const cfg = JSON.parse(fs.readFileSync(file, "utf8"));
-  fs.writeFileSync(file, `${JSON.stringify({ ...cfg, ...patch }, null, 2)}\n`);
+  fn();
+  if (treeHash(app) !== before) throw new Error(`${what} changed files`);
 }
 
 const SCENARIOS = {
-  /** Fresh Angular app (modern naming), full preset, alias imports, `add` artifacts. */
-  "modern-full"() {
-    const app = ngNew("modern-full");
-    ngx(app, "init", "--preset", "full", "--yes");
-    assertStableUpdate(app);
-    ngx(app, "add", "user");
-    ngx(app, "add", "user-card", "--type", "component");
-    ngx(app, "add", "truncate", "--type", "pipe");
-    ngx(app, "add", "highlight", "--type", "directive");
-    ngx(app, "doctor");
+  /** Fresh Angular app (modern naming, alias imports): core, every module, a service. */
+  modern() {
+    const app = ngNew("modern");
+    ngb(app, "init", "--yes");
+    ngb(app, "add", "auth", "errors", "logging", "layout", "--yes");
+    assertUnchanged(
+      app,
+      () => ngb(app, "add", "auth", "--yes"),
+      "re-adding auth",
+    );
+    ngb(app, "generate", "service", "user", "--endpoint", "/users");
+    ngb(app, "doctor");
     build(app);
   },
-  /** SSR app, suffixed naming, relative imports, memory cache + httpResource. */
+  /** SSR app, suffixed naming, relative imports, memory cache; layout before auth. */
   "suffixed-relative-ssr"() {
     const app = ngNew("suffixed-relative-ssr", ["--ssr"]);
-    ngx(
+    ngb(
       app,
       "init",
-      "--preset",
-      "full",
       "--yes",
       "--naming",
       "suffixed",
       "--no-tsconfig",
+      "--storage",
+      "memory",
     );
-    patchConfig(app, { storageEngine: "memory", useHttpResource: true });
-    ngx(app, "update", "--yes");
-    assertStableUpdate(app);
-    ngx(app, "doctor");
+    ngb(app, "add", "layout", "--yes");
+    ngb(app, "add", "auth", "--yes");
+    ngb(app, "doctor");
     build(app);
   },
 };

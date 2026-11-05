@@ -4,9 +4,9 @@ import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runAdd } from "../src/commands/add";
 import { runDoctor } from "../src/commands/doctor";
+import { runGenerate } from "../src/commands/generate";
 import { runInit } from "../src/commands/init";
 import { runList } from "../src/commands/list";
-import { runUpdate } from "../src/commands/update";
 import { CONFIG_SCHEMA_URL } from "../src/lib/config";
 import { parseJsonWithComments } from "../src/lib/parse-jsonc";
 
@@ -101,7 +101,7 @@ async function snapshotTree(dir: string): Promise<Record<string, string>> {
 
 let dir: string;
 beforeEach(async () => {
-  dir = await fse.mkdtemp(path.join(os.tmpdir(), "ngx-it-"));
+  dir = await fse.mkdtemp(path.join(os.tmpdir(), "ng-base-it-"));
   await writeFixture(dir);
   // clack writes straight to stdout; keep the test output readable.
   vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -115,100 +115,165 @@ afterEach(async () => {
   await fse.remove(dir);
 });
 
-describe("init --preset full --yes on an Angular 22 app", () => {
-  it("generates the full core, patches the project, and is stable", async () => {
-    await runInit(dir, { yes: true, preset: "full" });
+const read = (file: string) => fse.readFile(path.join(dir, file), "utf8");
+const exists = (file: string) => fse.pathExists(path.join(dir, file));
+const config = async () => fse.readJson(path.join(dir, ".ng-base.json"));
+const tsPaths = (raw: string | undefined) =>
+  Object.keys(
+    (
+      parseJsonWithComments(raw ?? "") as {
+        compilerOptions: { paths: Record<string, string[]> };
+      }
+    ).compilerOptions.paths,
+  );
+
+describe("init → add on an Angular 22 app", () => {
+  it("init installs only the core and patches the project", async () => {
+    await runInit(dir, { yes: true });
     expect(process.exitCode).toBeUndefined();
 
     const tree = await snapshotTree(dir);
-    // Generated file list (modern naming: suffixless app.ts was detected).
     expect(Object.keys(tree)).toMatchSnapshot();
 
-    const config = JSON.parse(tree[".ngx-base-cli.json"] ?? "{}");
-    expect(config.$schema).toBe(CONFIG_SCHEMA_URL);
-    expect(config.naming).toBe("modern");
-    expect(config.project).toBe("demo");
+    const cfg = JSON.parse(tree[".ng-base.json"] ?? "{}");
+    expect(cfg.$schema).toBe(CONFIG_SCHEMA_URL);
+    expect(cfg.naming).toBe("modern");
+    expect(cfg.project).toBe("demo");
+    expect(cfg.modules).toEqual([]);
+    expect(cfg.useHttpResource).toBe(true);
 
-    // app.config: HTTP providers with every interceptor, cache last.
     expect(tree["src/app/app.config.ts"]).toMatch(
-      /provideHttpClient\(\s*withInterceptors\(\[\s*authInterceptor,\s*errorInterceptor,\s*cacheInterceptor,?\s*\]\)/,
+      /provideHttpClient\(\s*withInterceptors\(\[\s*cacheInterceptor,?\s*\]\)/,
     );
-    // app.routes: merged, not overwritten; app.html kept (createOnly).
-    expect(tree["src/app/app.routes.ts"]).toContain("...PUBLIC_ROUTES");
-    expect(tree["src/app/app.routes.ts"]).toContain("...PRIVATE_ROUTES");
-    expect(tree["src/app/app.html"]).toBe("<h1>demo</h1>\n");
-    // tsconfig: aliases added, comment kept, no baseUrl.
+    // tsconfig: only @core, comment kept, no baseUrl.
     expect(tree["tsconfig.json"]).toContain(
       "/* To learn more about Typescript",
     );
     expect(tree["tsconfig.json"]).not.toContain("baseUrl");
-    const tsconfig = parseJsonWithComments(tree["tsconfig.json"] ?? "") as {
-      compilerOptions: { paths: Record<string, string[]> };
-    };
-    expect(tsconfig.compilerOptions.paths["@core/*"]).toEqual([
-      "./src/app/core/*",
-    ]);
-    // angular.json: prod environment swap.
+    expect(tsPaths(tree["tsconfig.json"])).toEqual(["@core/*"]);
     expect(tree["angular.json"]).toContain(
       '"with": "src/environments/environment.prod.ts"',
     );
-    // Selector prefix from angular.json.
+    // No sync artifacts any more.
+    expect(tree[".ngx-base-cli.manifest.json"]).toBeUndefined();
+    expect(tree["src/app/core/services/index.ts"]).toBeUndefined();
+  });
+
+  it("add layout logging errors auth wires everything up", async () => {
+    await runInit(dir, { yes: true });
+    await runAdd(["layout", "logging", "errors", "auth"], dir, { yes: true });
+    expect(process.exitCode).toBeUndefined();
+
+    const tree = await snapshotTree(dir);
+    expect(Object.keys(tree)).toMatchSnapshot();
+    expect((await config()).modules).toEqual([
+      "auth",
+      "errors",
+      "logging",
+      "layout",
+    ]);
+    expect(tree["src/app/app.config.ts"]).toMatch(
+      /withInterceptors\(\[\s*authInterceptor,\s*errorInterceptor,\s*loggingInterceptor,\s*cacheInterceptor,?\s*\]\)/,
+    );
+    expect(tree["src/app/app.routes.ts"]).toContain("...PUBLIC_ROUTES");
+    expect(tree["src/app/app.routes.ts"]).toContain("...PRIVATE_ROUTES");
+    expect(tree["src/app/app.html"]).toBe("<h1>demo</h1>\n");
+    expect(tree["src/app/routes/private.routes.ts"]).toContain(
+      "canMatch: [authGuard]",
+    );
     expect(tree["src/app/layout/private/private-layout.ts"]).toContain(
       "selector: 'app-private-layout'",
     );
-
-    // update right after init: nothing changes.
-    await runUpdate(dir, true);
-    expect(process.exitCode).toBeUndefined();
-    expect(await snapshotTree(dir)).toEqual(tree);
+    expect(tsPaths(tree["tsconfig.json"])).toEqual([
+      "@core/*",
+      "@layout/*",
+      "@pages/*",
+      "@shared/*",
+    ]);
 
     await runList(dir);
-    expect(process.exitCode).toBeUndefined();
     await runDoctor(dir);
     expect(process.exitCode).toBeUndefined();
   });
 
-  it("keeps `add` artifacts in the manifest across a re-init", async () => {
-    await runInit(dir, { yes: true, preset: "full" });
-    await runAdd("user", "service", dir);
-    expect(
-      await fse.pathExists(path.join(dir, "src/app/core/services/user.ts")),
-    ).toBe(true);
-    const userService = await fse.readFile(
-      path.join(dir, "src/app/core/services/user.ts"),
-      "utf8",
+  it("layout before auth: unguarded route, auth later never rewrites it", async () => {
+    await runInit(dir, { yes: true });
+    await runAdd(["layout"], dir, { yes: true });
+    const routes = await read("src/app/routes/private.routes.ts");
+    expect(routes).not.toMatch(/^\s*canMatch/m);
+    await runAdd(["auth"], dir, { yes: true });
+    expect(await read("src/app/routes/private.routes.ts")).toBe(routes);
+    expect(await exists("src/app/core/guards/auth-guard.ts")).toBe(true);
+    expect(await read("src/app/app.config.ts")).toMatch(
+      /withInterceptors\(\[\s*authInterceptor,\s*cacheInterceptor/,
     );
-    expect(userService).toContain("export class UserService");
-    expect(userService).toContain("inject(ApiClient)");
+  });
 
-    await runInit(dir, { yes: true, preset: "full" });
-    const manifest = await fse.readJson(
-      path.join(dir, ".ngx-base-cli.manifest.json"),
-    );
-    expect(Object.keys(manifest.files)).toContain(
-      "src/app/core/services/user.ts",
-    );
-    expect(Object.keys(manifest.files)).toContain(
-      "src/app/core/services/api-client.ts",
-    );
+  it("the code is the user's: edits survive re-adds and re-inits", async () => {
+    await runInit(dir, { yes: true, with: "errors" });
+    const file = "src/app/core/interceptors/error-interceptor.ts";
+    const client = "src/app/core/services/api-client.ts";
+    await fse.writeFile(path.join(dir, file), "// mine\n");
+    await fse.writeFile(path.join(dir, client), "// mine too\n");
+
+    await runAdd(["errors"], dir, { yes: true }); // already installed: no-op
+    await runInit(dir, { yes: true });
+    expect(await read(file)).toBe("// mine\n");
+    expect(await read(client)).toBe("// mine too\n");
+    expect((await config()).modules).toEqual(["errors"]);
+
+    await runAdd(["errors"], dir, { yes: true, overwrite: true });
+    expect(await read(file)).not.toBe("// mine\n");
+  });
+
+  it("generate service writes an ApiClient-based service", async () => {
+    await runInit(dir, { yes: true });
+    await runGenerate("service", "user", dir, { endpoint: "users" });
+    const svc = await read("src/app/core/services/user.ts");
+    expect(svc).toContain("export class UserService");
+    expect(svc).toContain("inject(ApiClient)");
+    expect(svc).toContain('private readonly endpoint = "/users";');
+
+    await runGenerate("component", "user", dir);
+    expect(process.exitCode).toBe(1);
   });
 
   it("--naming suffixed and --no-tsconfig fall back to relative imports", async () => {
     await runInit(dir, {
       yes: true,
-      preset: "standard",
+      with: "auth",
       naming: "suffixed",
       tsconfig: false,
+      storage: "memory",
     });
     expect(process.exitCode).toBeUndefined();
-    const tree = await snapshotTree(dir);
-    expect(tree["tsconfig.json"]).toBe(TSCONFIG);
-    expect(JSON.parse(tree[".ngx-base-cli.json"] ?? "{}").importStyle).toBe(
-      "relative",
-    );
-    expect(tree["src/app/core/services/cache.service.ts"]).toBeDefined();
-    expect(tree["src/app/app.config.ts"]).toContain(
+    expect(await read("tsconfig.json")).toBe(TSCONFIG);
+    const cfg = await config();
+    expect(cfg.importStyle).toBe("relative");
+    expect(cfg.storageEngine).toBe("memory");
+    expect(await read("src/app/app.config.ts")).toContain(
       "from './core/interceptors/auth.interceptor'",
     );
+    expect(await read("src/app/core/services/cache.storage.ts")).toContain(
+      "memoryStorage()",
+    );
+  });
+
+  it("migrates a 0.1 .ngx-base-cli.json on the next command", async () => {
+    await fse.writeJson(path.join(dir, ".ngx-base-cli.json"), {
+      outputDir: "src/app/core",
+      naming: "modern",
+      generateAuthInterceptor: true,
+      generateBarrel: true,
+    });
+    await runList(dir);
+    expect(await exists(".ngx-base-cli.json")).toBe(false);
+    expect((await config()).modules).toEqual(["auth"]);
+  });
+
+  it("rejects unknown modules", async () => {
+    await runInit(dir, { yes: true, with: "auth,charts" });
+    expect(process.exitCode).toBe(1);
+    expect(await exists(".ng-base.json")).toBe(false);
   });
 });

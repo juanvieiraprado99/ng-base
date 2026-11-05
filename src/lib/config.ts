@@ -1,31 +1,30 @@
 import path from "node:path";
 import fse from "fs-extra";
 import { NAMING_STYLES, type NamingStyle } from "./naming-style.js";
-import {
-  validateIdentifier,
-  validateImportPath,
-  validateRelativePath,
-} from "./validators.js";
+import { validateRelativePath } from "./validators.js";
 
-export const NGX_BASE_CLI_CONFIG_FILENAME = ".ngx-base-cli.json";
+export const CONFIG_FILENAME = ".ng-base.json";
+/** Config file written by ngx-base-cli 0.1 — migrated on read. */
+export const LEGACY_CONFIG_FILENAME = ".ngx-base-cli.json";
+/** Manifest written by ngx-base-cli 0.1 — no longer used. */
+export const LEGACY_MANIFEST_FILENAME = ".ngx-base-cli.manifest.json";
 
 export type StorageEngine = "localStorage" | "sessionStorage" | "memory";
 
-export interface NgxBaseCliConfig {
+/** Optional modules installable with `ng-base add` (the core comes with `init`). */
+export const MODULE_IDS = ["auth", "errors", "logging", "layout"] as const;
+export type ModuleId = (typeof MODULE_IDS)[number];
+
+export function isModuleId(value: string): value is ModuleId {
+  return (MODULE_IDS as readonly string[]).includes(value);
+}
+
+export interface NgBaseConfig {
   outputDir: string;
   baseApiUrl: string;
   importStyle: "alias" | "relative";
   useHttpResource: boolean;
   storageEngine: StorageEngine;
-  generateAuthInterceptor: boolean;
-  /** @deprecated Unused since the auth interceptor reads AuthTokenStore. Kept for config compatibility. */
-  authTokenName: string;
-  /** @deprecated Unused since the auth interceptor reads AuthTokenStore. Kept for config compatibility. */
-  authTokenImportPath: string;
-  generateErrorInterceptor: boolean;
-  generateLoggingInterceptor: boolean;
-  generateBarrel: boolean;
-  generateProjectStructure: boolean;
   /**
    * File/class naming convention of generated code. `init` detects it; configs
    * written before it existed default to "suffixed" (the original behavior).
@@ -33,46 +32,42 @@ export interface NgxBaseCliConfig {
   naming: NamingStyle;
   /** angular.json project to target; empty = auto-detect. */
   project: string;
+  /** Modules installed with `add` (or `init --with`), in install order. */
+  modules: ModuleId[];
 }
 
-export const DEFAULT_NGX_BASE_CONFIG: NgxBaseCliConfig = {
+export const DEFAULT_CONFIG: NgBaseConfig = {
   outputDir: "src/app/core",
   baseApiUrl: "https://api.example.com",
   importStyle: "alias",
   useHttpResource: false,
   storageEngine: "localStorage",
-  generateAuthInterceptor: false,
-  authTokenName: "AUTH_TOKEN",
-  authTokenImportPath: "@core/tokens",
-  generateErrorInterceptor: false,
-  generateLoggingInterceptor: false,
-  generateBarrel: true,
-  generateProjectStructure: false,
   naming: "suffixed",
   project: "",
+  modules: [],
 };
 
 export function configPath(cwd: string): string {
-  return path.join(cwd, NGX_BASE_CLI_CONFIG_FILENAME);
+  return path.join(cwd, CONFIG_FILENAME);
 }
 
 /** Where the published JSON Schema lives (used as `$schema` in the config). */
-export const CONFIG_SCHEMA_URL = "https://unpkg.com/ngx-base-cli/schema.json";
+export const CONFIG_SCHEMA_URL = "https://unpkg.com/ng-base/schema.json";
 
 interface ConfigField {
-  type: "string" | "boolean";
+  type: "string" | "boolean" | "array";
   description: string;
+  /** Allowed values (for arrays: allowed items). */
   enum?: readonly string[];
-  deprecated?: boolean;
   /** Returns an error message for an invalid value. */
   validate?: (value: string) => string | undefined;
 }
 
 /**
- * Single source of truth for `.ngx-base-cli.json`: drives runtime validation in
- * `readNgxBaseConfig` and the published JSON Schema (`buildConfigJsonSchema`).
+ * Single source of truth for `.ng-base.json`: drives runtime validation in
+ * `readNgBaseConfig` and the published JSON Schema (`buildConfigJsonSchema`).
  */
-export const CONFIG_FIELDS: { [K in keyof NgxBaseCliConfig]: ConfigField } = {
+export const CONFIG_FIELDS: { [K in keyof NgBaseConfig]: ConfigField } = {
   outputDir: {
     type: "string",
     description:
@@ -92,49 +87,12 @@ export const CONFIG_FIELDS: { [K in keyof NgxBaseCliConfig]: ConfigField } = {
   },
   useHttpResource: {
     type: "boolean",
-    description: "Add ApiClient.resource() for httpResource (Angular 19.2+).",
+    description: "ApiClient.resource() for httpResource (Angular 19.2+).",
   },
   storageEngine: {
     type: "string",
     enum: ["localStorage", "sessionStorage", "memory"],
     description: "CACHE_STORAGE backend for the response cache (SSR-safe).",
-  },
-  generateAuthInterceptor: {
-    type: "boolean",
-    description:
-      "Generate the auth interceptor, AuthTokenStore and AUTH_ALLOWED_URLS.",
-  },
-  authTokenName: {
-    type: "string",
-    deprecated: true,
-    description:
-      "Deprecated and ignored: the auth interceptor reads AuthTokenStore.",
-    validate: validateIdentifier,
-  },
-  authTokenImportPath: {
-    type: "string",
-    deprecated: true,
-    description:
-      "Deprecated and ignored: the auth interceptor reads AuthTokenStore.",
-    validate: validateImportPath,
-  },
-  generateErrorInterceptor: {
-    type: "boolean",
-    description:
-      "Generate the error interceptor (HttpErrorBus, LOGIN_ROUTE / FORBIDDEN_ROUTE redirects).",
-  },
-  generateLoggingInterceptor: {
-    type: "boolean",
-    description: "Generate a dev-only request logging interceptor.",
-  },
-  generateBarrel: {
-    type: "boolean",
-    description: "Generate services/index.ts re-exporting the core services.",
-  },
-  generateProjectStructure: {
-    type: "boolean",
-    description:
-      "Generate layout/, pages/, routes/ (with authGuard) and shared/, and merge app.routes.ts.",
   },
   naming: {
     type: "string",
@@ -146,53 +104,71 @@ export const CONFIG_FIELDS: { [K in keyof NgxBaseCliConfig]: ConfigField } = {
     type: "string",
     description: "angular.json project to target; empty = auto-detect.",
   },
+  modules: {
+    type: "array",
+    enum: MODULE_IDS,
+    description:
+      "Modules installed with `ng-base add` (auth, errors, logging, layout).",
+  },
 };
 
 /** Keys accepted in the file besides the config fields. */
 const META_KEYS = new Set(["$schema"]);
 
-/** JSON Schema (draft-07) for `.ngx-base-cli.json`, built from CONFIG_FIELDS. */
+/** ngx-base-cli 0.1 flags, mapped to the module they turned on. */
+const LEGACY_FLAGS: Record<string, ModuleId | null> = {
+  generateAuthInterceptor: "auth",
+  generateErrorInterceptor: "errors",
+  generateLoggingInterceptor: "logging",
+  generateProjectStructure: "layout",
+  generateBarrel: null,
+  authTokenName: null,
+  authTokenImportPath: null,
+};
+
+/** JSON Schema (draft-07) for `.ng-base.json`, built from CONFIG_FIELDS. */
 export function buildConfigJsonSchema(): Record<string, unknown> {
   const properties: Record<string, unknown> = {
     $schema: { type: "string" },
   };
   for (const [key, field] of Object.entries(CONFIG_FIELDS)) {
+    const enumValues = field.enum ? [...field.enum] : undefined;
     properties[key] = {
       type: field.type,
       description: field.description,
-      ...(field.enum ? { enum: [...field.enum] } : {}),
-      ...(field.deprecated ? { deprecated: true } : {}),
-      default: DEFAULT_NGX_BASE_CONFIG[key as keyof NgxBaseCliConfig],
+      ...(field.type === "array"
+        ? {
+            items: {
+              type: "string",
+              ...(enumValues ? { enum: enumValues } : {}),
+            },
+            uniqueItems: true,
+          }
+        : enumValues
+          ? { enum: enumValues }
+          : {}),
+      default: DEFAULT_CONFIG[key as keyof NgBaseConfig],
     };
   }
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
     $id: CONFIG_SCHEMA_URL,
-    title: "ngx-base-cli config (.ngx-base-cli.json)",
+    title: "ng-base config (.ng-base.json)",
     type: "object",
     properties,
     additionalProperties: false,
   };
 }
 
-const warn = (msg: string) => console.warn(`[ngx-base-cli] ${msg}`);
+const warn = (msg: string) => console.warn(`[ng-base] ${msg}`);
 
-export async function readNgxBaseConfig(
-  cwd: string,
-): Promise<NgxBaseCliConfig | null> {
-  const p = configPath(cwd);
-  if (!(await fse.pathExists(p))) return null;
-  const raw = await fse.readFile(p, "utf8");
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    throw new Error(
-      `${NGX_BASE_CLI_CONFIG_FILENAME} is not valid JSON. Fix it and re-run.`,
-    );
-  }
+function typeOf(value: unknown): ConfigField["type"] | string {
+  return Array.isArray(value) ? "array" : typeof value;
+}
 
-  const knownKeys = Object.keys(CONFIG_FIELDS) as (keyof NgxBaseCliConfig)[];
+/** Validates a parsed config object, falling back to defaults per key. */
+export function parseConfig(parsed: Record<string, unknown>): NgBaseConfig {
+  const knownKeys = Object.keys(CONFIG_FIELDS) as (keyof NgBaseConfig)[];
   for (const key of Object.keys(parsed)) {
     if (!(key in CONFIG_FIELDS) && !META_KEYS.has(key)) {
       warn(
@@ -201,14 +177,31 @@ export async function readNgxBaseConfig(
     }
   }
 
-  const merged: NgxBaseCliConfig = { ...DEFAULT_NGX_BASE_CONFIG };
+  const merged: NgBaseConfig = { ...DEFAULT_CONFIG, modules: [] };
   for (const key of knownKeys) {
     const value = parsed[key];
     if (value === undefined) continue;
     const field = CONFIG_FIELDS[key];
-    const fallback = `Using default "${String(DEFAULT_NGX_BASE_CONFIG[key])}".`;
-    if (typeof value !== field.type) {
+    const fallback = `Using default ${JSON.stringify(DEFAULT_CONFIG[key])}.`;
+    if (typeOf(value) !== field.type) {
       warn(`Invalid type for "${key}" (expected ${field.type}). ${fallback}`);
+      continue;
+    }
+    if (field.type === "array") {
+      const items: string[] = [];
+      for (const item of value as unknown[]) {
+        if (
+          typeof item !== "string" ||
+          (field.enum && !field.enum.includes(item))
+        ) {
+          warn(
+            `Invalid ${key} entry ${JSON.stringify(item)} — ignored. Allowed: ${field.enum?.join(", ")}.`,
+          );
+        } else if (!items.includes(item)) {
+          items.push(item);
+        }
+      }
+      (merged as unknown as Record<string, unknown>)[key] = items;
       continue;
     }
     if (field.enum && !field.enum.includes(value as string)) {
@@ -227,9 +220,69 @@ export async function readNgxBaseConfig(
   return merged;
 }
 
-export async function writeNgxBaseConfig(
+/** Converts a 0.1 config (generate* flags) to the modules format. */
+export function migrateLegacyConfig(
+  legacy: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const modules: ModuleId[] = [];
+  for (const [key, value] of Object.entries(legacy)) {
+    if (key === "$schema") continue;
+    if (key in LEGACY_FLAGS) {
+      const id = LEGACY_FLAGS[key];
+      if (id && value === true) modules.push(id);
+      continue;
+    }
+    out[key] = value;
+  }
+  out.modules = MODULE_IDS.filter((id) => modules.includes(id));
+  return out;
+}
+
+function parseJsonFile(raw: string, file: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  throw new Error(`${file} is not a valid JSON object. Fix it and re-run.`);
+}
+
+/**
+ * Reads `.ng-base.json`. A 0.1 `.ngx-base-cli.json` is migrated: converted to
+ * the modules format, written as `.ng-base.json` and removed.
+ */
+export async function readNgBaseConfig(
   cwd: string,
-  config: NgxBaseCliConfig,
+): Promise<NgBaseConfig | null> {
+  const p = configPath(cwd);
+  if (await fse.pathExists(p)) {
+    return parseConfig(
+      parseJsonFile(await fse.readFile(p, "utf8"), CONFIG_FILENAME),
+    );
+  }
+
+  const legacyPath = path.join(cwd, LEGACY_CONFIG_FILENAME);
+  if (!(await fse.pathExists(legacyPath))) return null;
+  const legacy = parseJsonFile(
+    await fse.readFile(legacyPath, "utf8"),
+    LEGACY_CONFIG_FILENAME,
+  );
+  const config = parseConfig(migrateLegacyConfig(legacy));
+  await writeNgBaseConfig(cwd, config);
+  await fse.remove(legacyPath);
+  warn(
+    `Migrated ${LEGACY_CONFIG_FILENAME} → ${CONFIG_FILENAME} (modules: ${config.modules.join(", ") || "none"}).`,
+  );
+  return config;
+}
+
+export async function writeNgBaseConfig(
+  cwd: string,
+  config: NgBaseConfig,
 ): Promise<void> {
   // `$schema` first gives editors autocomplete/validation for the file.
   const file = { $schema: CONFIG_SCHEMA_URL, ...config };

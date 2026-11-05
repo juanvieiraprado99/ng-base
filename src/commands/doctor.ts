@@ -2,10 +2,17 @@ import path from "node:path";
 import * as p from "@clack/prompts";
 import fse from "fs-extra";
 import pc from "picocolors";
-import type { NgxBaseCliConfig } from "../lib/config.js";
-import { readNgxBaseConfig } from "../lib/config.js";
-import { interceptorBindings } from "../lib/generate-plan.js";
-import { coreFiles } from "../lib/naming-style.js";
+import {
+  LEGACY_MANIFEST_FILENAME,
+  type NgBaseConfig,
+  readNgBaseConfig,
+} from "../lib/config.js";
+import {
+  buildModuleTargets,
+  installedIds,
+  interceptorBindings,
+  pathAliases,
+} from "../lib/modules.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
 import { resolveWorkspace, type Workspace } from "../lib/workspace.js";
 
@@ -24,13 +31,11 @@ const ICON: Record<Level, string> = {
 };
 
 export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
-  p.intro(pc.inverse(" ngx-base-cli doctor "));
+  p.intro(pc.inverse(" ng-base doctor "));
 
-  const config = await readNgxBaseConfig(cwd);
+  const config = await readNgBaseConfig(cwd);
   if (!config) {
-    p.outro(
-      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
-    );
+    p.outro(pc.red(".ng-base.json not found. Run `ng-base init` first."));
     process.exitCode = 1;
     return;
   }
@@ -38,11 +43,11 @@ export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
   const checks: Check[] = [];
   const ws = await resolveWorkspace(cwd, config.project);
 
-  await checkBaseFiles(checks, cwd, config);
+  await checkModuleFiles(checks, cwd, config, ws);
   await checkEnvironments(checks, cwd, ws);
-  await checkAliases(checks, cwd, config);
+  await checkAliases(checks, cwd, config, ws);
   await checkAppConfig(checks, cwd, config, ws);
-  await checkAuthToken(checks, cwd, config);
+  await checkLegacyFiles(checks, cwd);
 
   const maxLen = Math.max(...checks.map((c) => c.label.length));
   const body = checks
@@ -68,30 +73,32 @@ export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
   }
 }
 
-async function checkBaseFiles(
+async function checkModuleFiles(
   checks: Check[],
   cwd: string,
-  config: NgxBaseCliConfig,
+  config: NgBaseConfig,
+  ws: Workspace,
 ): Promise<void> {
-  const base = path.join(cwd, config.outputDir);
-  const f = coreFiles(config.naming);
-  const files = [
-    f.cacheInterface,
-    f.cacheService,
-    f.cacheStorage,
-    f.apiClient,
-    f.cacheInterceptor,
-    f.apiTokens,
-  ];
-  for (const rel of files) {
-    const label = rel;
-    const exists = await fse.pathExists(path.join(base, rel));
+  for (const id of installedIds(config)) {
+    const targets = buildModuleTargets(cwd, config, ws, [id]).filter(
+      (t) =>
+        !t.createOnly &&
+        !t.outPath.includes(`${path.sep}environments${path.sep}`),
+    );
+    const missing: string[] = [];
+    for (const t of targets) {
+      if (!(await fse.pathExists(t.outPath))) {
+        missing.push(path.relative(cwd, t.outPath).replace(/\\/g, "/"));
+      }
+    }
     checks.push({
-      level: exists ? "ok" : "error",
-      label: `${label} present`,
-      detail: exists
-        ? undefined
-        : `Expected at ${config.outputDir}/${rel}. Run \`ngx-base-cli init\`.`,
+      // Moving or deleting copied files is the user's call; the core is required.
+      level: missing.length === 0 ? "ok" : id === "core" ? "error" : "warn",
+      label: `${id} files (${targets.length - missing.length}/${targets.length})`,
+      detail:
+        missing.length === 0
+          ? undefined
+          : `Not found (moved or deleted?): ${missing.join(", ")}`,
     });
   }
 }
@@ -108,7 +115,7 @@ async function checkEnvironments(
     checks.push({
       level: exists ? "ok" : "warn",
       label: `environments/${file}`,
-      detail: exists ? undefined : "Missing — run `ngx-base-cli init`.",
+      detail: exists ? undefined : "Missing — run `ng-base init`.",
     });
   }
 }
@@ -116,7 +123,8 @@ async function checkEnvironments(
 async function checkAliases(
   checks: Check[],
   cwd: string,
-  config: NgxBaseCliConfig,
+  config: NgBaseConfig,
+  ws: Workspace,
 ): Promise<void> {
   if (config.importStyle !== "alias") return;
 
@@ -146,37 +154,23 @@ async function checkAliases(
     return;
   }
 
-  const required = ["@core/*"];
-  const structural = ["@layout/*", "@pages/*", "@shared/*"];
-
-  for (const alias of required) {
-    const has = alias in paths;
+  for (const alias of Object.keys(pathAliases(config, ws))) {
+    const key = `${alias}/*`;
+    const has = key in paths;
     checks.push({
-      level: has ? "ok" : "error",
-      label: `alias ${alias}`,
+      level: has ? "ok" : alias === "@core" ? "error" : "warn",
+      label: `alias ${key}`,
       detail: has
         ? undefined
         : "Add it to tsconfig.json compilerOptions.paths.",
     });
-  }
-  if (config.generateProjectStructure) {
-    for (const alias of structural) {
-      const has = alias in paths;
-      checks.push({
-        level: has ? "ok" : "warn",
-        label: `alias ${alias}`,
-        detail: has
-          ? undefined
-          : "Used by generated layout/pages/shared files.",
-      });
-    }
   }
 }
 
 async function checkAppConfig(
   checks: Check[],
   cwd: string,
-  config: NgxBaseCliConfig,
+  config: NgBaseConfig,
   ws: Workspace,
 ): Promise<void> {
   const appConfigPath = path.join(cwd, ws.appDir, "app.config.ts");
@@ -219,21 +213,12 @@ async function checkAppConfig(
   }
 }
 
-async function checkAuthToken(
-  checks: Check[],
-  cwd: string,
-  config: NgxBaseCliConfig,
-): Promise<void> {
-  if (!config.generateAuthInterceptor && !config.generateProjectStructure) {
-    return;
+async function checkLegacyFiles(checks: Check[], cwd: string): Promise<void> {
+  if (await fse.pathExists(path.join(cwd, LEGACY_MANIFEST_FILENAME))) {
+    checks.push({
+      level: "warn",
+      label: `${LEGACY_MANIFEST_FILENAME} (unused)`,
+      detail: "Left over from ngx-base-cli 0.1 — safe to delete.",
+    });
   }
-  const rel = `${config.outputDir}/${coreFiles(config.naming).authStore}`;
-  const exists = await fse.pathExists(path.join(cwd, rel));
-  checks.push({
-    level: exists ? "ok" : "error",
-    label: "AuthTokenStore present",
-    detail: exists
-      ? "Call inject(AuthTokenStore).set(token) after login."
-      : `Expected at ${rel}. Run \`ngx-base-cli update\`.`,
-  });
 }

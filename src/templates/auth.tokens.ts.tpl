@@ -22,6 +22,12 @@ export const AUTH_ALLOWED_URLS = new InjectionToken<readonly string[]>(
   },
 );
 
+/** Where unauthenticated users are sent (authGuard + 401 handling). Override in providers. */
+export const LOGIN_ROUTE = new InjectionToken<string>("LOGIN_ROUTE", {
+  providedIn: "root",
+  factory: () => "/login",
+});
+
 /** Per-request opt-out (login, refresh, public endpoints). */
 export const SKIP_AUTH = new HttpContextToken<boolean>(() => false);
 

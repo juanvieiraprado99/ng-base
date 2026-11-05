@@ -1,109 +1,102 @@
-import path from "node:path";
 import * as p from "@clack/prompts";
-import fse from "fs-extra";
 import pc from "picocolors";
 import {
-  type AddOptions,
-  COMPONENT_STYLES,
-  planArtifactFiles,
-} from "../lib/artifact-plan.js";
-import { readNgxBaseConfig } from "../lib/config.js";
-import {
-  manifestKey,
-  readManifest,
-  sha256,
-  writeManifest,
-} from "../lib/manifest.js";
-import { ADD_TYPES, type AddType, kebabName } from "../lib/naming.js";
-import { applyTemplate } from "../lib/templates.js";
+  isModuleId,
+  MODULE_IDS,
+  type ModuleId,
+  readNgBaseConfig,
+  writeNgBaseConfig,
+} from "../lib/config.js";
+import { installModules, printNextSteps } from "../lib/install.js";
+import { getModule, sortIds } from "../lib/modules.js";
 import { resolveWorkspace } from "../lib/workspace.js";
 
-export async function runAdd(
-  featureName: string,
-  type: AddType = "service",
-  cwd: string = process.cwd(),
-  opts: AddOptions = {},
-): Promise<void> {
-  p.intro(pc.inverse(` ngx-base-cli add ${type} `));
+export interface AddCommandOptions {
+  yes?: boolean;
+  /** Replace files that already exist (and re-install listed modules). */
+  overwrite?: boolean;
+  dryRun?: boolean;
+}
 
-  if (!ADD_TYPES.includes(type)) {
-    p.outro(
-      pc.red(`Invalid type "${type}". Allowed: ${ADD_TYPES.join(", ")}.`),
-    );
+/** `ng-base add [modules...]` — copies modules into the project. */
+export async function runAdd(
+  names: string[],
+  cwd: string = process.cwd(),
+  opts: AddCommandOptions = {},
+): Promise<void> {
+  p.intro(pc.inverse(" ng-base add "));
+
+  const config = await readNgBaseConfig(cwd);
+  if (!config) {
+    p.outro(pc.red(".ng-base.json not found. Run `ng-base init` first."));
     process.exitCode = 1;
     return;
   }
 
-  if (opts.style && !COMPONENT_STYLES.includes(opts.style)) {
+  const unknown = names.filter((n) => !isModuleId(n));
+  if (unknown.length > 0) {
     p.outro(
       pc.red(
-        `Invalid style "${opts.style}". Allowed: ${COMPONENT_STYLES.join(", ")}.`,
+        `Unknown module(s): ${unknown.join(", ")}. Available: ${MODULE_IDS.join(", ")} (see \`ng-base list\`).`,
       ),
     );
     process.exitCode = 1;
     return;
   }
 
-  const config = await readNgxBaseConfig(cwd);
-  if (!config) {
-    p.outro(
-      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
-    );
-    process.exitCode = 1;
-    return;
+  let requested = names as ModuleId[];
+  if (requested.length === 0) {
+    const available = MODULE_IDS.filter((id) => !config.modules.includes(id));
+    if (available.length === 0) {
+      p.outro(pc.green("Every module is already installed."));
+      return;
+    }
+    if (opts.yes) {
+      p.outro(pc.red("Name the module(s) to add, e.g. `ng-base add auth`."));
+      process.exitCode = 1;
+      return;
+    }
+    const picked = await p.multiselect<ModuleId>({
+      message: "Which modules? (space to toggle, enter to install)",
+      options: available.map((id) => ({
+        value: id,
+        label: id,
+        hint: getModule(id).description,
+      })),
+      required: true,
+    });
+    if (p.isCancel(picked)) {
+      p.cancel("Cancelled.");
+      return;
+    }
+    requested = picked;
   }
 
-  if (!kebabName(featureName)) {
-    p.outro(pc.red("Invalid name."));
-    process.exitCode = 1;
+  const already = requested.filter((id) => config.modules.includes(id));
+  const ids = opts.overwrite
+    ? sortIds(requested)
+    : sortIds(requested.filter((id) => !config.modules.includes(id)));
+  if (already.length > 0 && !opts.overwrite) {
+    p.log.info(
+      pc.dim(
+        `Already installed: ${already.join(", ")} (use --overwrite to copy again).`,
+      ),
+    );
+  }
+  if (ids.length === 0) {
+    p.outro(pc.green("Nothing to add."));
     return;
   }
 
   const ws = await resolveWorkspace(cwd, config.project);
-  const plan = await planArtifactFiles(
-    type,
-    featureName,
-    cwd,
-    config.outputDir,
-    {
-      ...opts,
-      naming: config.naming,
-      prefix: ws.prefix,
-      sharedDir: `${ws.appDir}/shared`,
-    },
-  );
-  if (!plan.ok) {
-    p.outro(pc.red(plan.error));
-    process.exitCode = 1;
+  const result = await installModules(cwd, config, ws, ids, opts);
+  if (!result) return;
+  if (opts.dryRun) {
+    p.outro(pc.green("Dry run complete — nothing was written."));
     return;
   }
-  const files = plan.files;
 
-  for (const f of files) {
-    if (await fse.pathExists(f.outPath)) {
-      const overwrite = await p.confirm({
-        message: `${path.relative(cwd, f.outPath)} already exists. Overwrite?`,
-        initialValue: false,
-      });
-      if (p.isCancel(overwrite) || !overwrite) {
-        p.cancel("Cancelled.");
-        return;
-      }
-    }
-  }
-
-  const manifest = await readManifest(cwd);
-  for (const f of files) {
-    await fse.mkdir(path.dirname(f.outPath), { recursive: true });
-    const content = await applyTemplate(f.template, f.vars);
-    await fse.outputFile(f.outPath, content, "utf8");
-    manifest.files[manifestKey(cwd, f.outPath)] = {
-      hash: sha256(content),
-      template: f.template,
-    };
-    p.log.success(pc.green(`OK: ${path.relative(cwd, f.outPath)}`));
-  }
-  await writeManifest(cwd, manifest);
-
-  p.outro(pc.green("ngx-base-cli add finished."));
+  await writeNgBaseConfig(cwd, result.config);
+  await printNextSteps(cwd, config, ws, ids);
+  p.outro(pc.green(`Added: ${ids.join(", ")}.`));
 }

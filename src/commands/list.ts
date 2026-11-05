@@ -1,101 +1,24 @@
-import path from "node:path";
 import * as p from "@clack/prompts";
-import fse from "fs-extra";
 import pc from "picocolors";
-import { readNgxBaseConfig } from "../lib/config.js";
-import { buildGenerationTargets } from "../lib/generate-plan.js";
-import {
-  classifyTarget,
-  manifestKey,
-  readManifest,
-  type SyncStatus,
-} from "../lib/manifest.js";
-import { renderGenerationTarget } from "../lib/render-target.js";
-import { resolveWorkspace } from "../lib/workspace.js";
+import { readNgBaseConfig } from "../lib/config.js";
+import { MODULES } from "../lib/modules.js";
 
-interface FileEntry {
-  relPath: string;
-  status: SyncStatus;
-}
-
-const STATUS_ICON: Record<SyncStatus, string> = {
-  "in-sync": pc.green("OK"),
-  drift: pc.yellow("!!"),
-  edited: pc.magenta("~~"),
-  absent: pc.red("XX"),
-};
-
-const STATUS_LABEL: Record<SyncStatus, string> = {
-  "in-sync": pc.green("present, in sync"),
-  drift: pc.yellow("present, out of date (update available)"),
-  edited: pc.magenta("present, locally edited"),
-  absent: pc.red("absent"),
-};
-
+/** `ng-base list` — available modules and which ones the project has. */
 export async function runList(cwd: string = process.cwd()): Promise<void> {
-  p.intro(pc.inverse(" ngx-base-cli list "));
+  p.intro(pc.inverse(" ng-base list "));
+  const config = await readNgBaseConfig(cwd);
+  const installed = new Set<string>(config ? ["core", ...config.modules] : []);
 
-  const config = await readNgxBaseConfig(cwd);
-  if (!config) {
-    p.outro(
-      pc.red(".ngx-base-cli.json not found. Run `ngx-base-cli init` first."),
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  const ws = await resolveWorkspace(cwd, config.project);
-  const targets = buildGenerationTargets(cwd, config, ws);
-  const manifest = await readManifest(cwd);
-  const entries: FileEntry[] = [];
-
-  for (const t of targets) {
-    const relPath = path.relative(cwd, t.outPath).replace(/\\/g, "/");
-    const key = manifestKey(cwd, t.outPath);
-
-    if (!(await fse.pathExists(t.outPath))) {
-      entries.push({ relPath, status: "absent" });
-      continue;
-    }
-
-    if (t.dirOnly || t.createOnly) {
-      entries.push({ relPath, status: "in-sync" });
-      continue;
-    }
-
-    try {
-      const expected = await renderGenerationTarget(t);
-      const disk = await fse.readFile(t.outPath, "utf8");
-      const status = classifyTarget(disk, expected, manifest.files[key]?.hash);
-      entries.push({ relPath, status });
-    } catch {
-      entries.push({ relPath, status: "absent" });
-    }
-  }
-
-  const maxLen = Math.max(...entries.map((e) => e.relPath.length));
-
-  const body = entries
-    .map((entry) => {
-      const padded = entry.relPath.padEnd(maxLen);
-      return `${STATUS_ICON[entry.status]}  ${pc.dim(padded)}  ${STATUS_LABEL[entry.status]}`;
-    })
-    .join("\n");
-  p.note(body, "Sync status");
-
-  const total = entries.length;
-  const count = (s: SyncStatus) => entries.filter((e) => e.status === s).length;
-
-  const parts: string[] = [];
-  if (count("in-sync")) parts.push(pc.green(`${count("in-sync")} in sync`));
-  if (count("drift")) parts.push(pc.yellow(`${count("drift")} out of date`));
-  if (count("edited"))
-    parts.push(pc.magenta(`${count("edited")} locally edited`));
-  if (count("absent")) parts.push(pc.red(`${count("absent")} absent`));
-
-  if (count("drift") > 0 || count("absent") > 0) {
-    process.exitCode = 1;
-  }
-
-  p.outro(`${total} files — ${parts.join(pc.dim(" · "))}`);
+  const width = Math.max(...MODULES.map((m) => m.id.length));
+  const body = MODULES.map((m) => {
+    const mark = installed.has(m.id) ? pc.green("✔") : pc.dim("·");
+    const how = m.id === "core" ? "init" : `add ${m.id}`;
+    return `${mark}  ${m.id.padEnd(width)}  ${m.description}\n   ${" ".repeat(width)}  ${pc.dim(`ng-base ${how}`)}`;
+  }).join("\n");
+  p.note(body, config ? "Modules (✔ installed)" : "Modules");
+  p.outro(
+    config
+      ? pc.green(`${installed.size} of ${MODULES.length} installed.`)
+      : pc.dim("Not initialized yet — start with `ng-base init`."),
+  );
 }

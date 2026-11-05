@@ -1,4 +1,4 @@
-import type { GenerationTarget } from "./generate-plan.js";
+import type { GenerationTarget } from "./modules.js";
 import { applyTemplate } from "./templates.js";
 
 export async function renderGenerationTarget(

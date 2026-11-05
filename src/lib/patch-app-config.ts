@@ -7,9 +7,13 @@ import {
   type SourceFile,
   SyntaxKind,
 } from "ts-morph";
-import type { NgxBaseCliConfig } from "./config.js";
-import { apiTokensFile, interceptorBindings } from "./generate-plan.js";
+import type { NgBaseConfig } from "./config.js";
 import { importBetweenFiles } from "./import-paths.js";
+import {
+  apiTokensFile,
+  interceptorBindings,
+  interceptorOrder,
+} from "./modules.js";
 import { createPatchSourceFile } from "./ts-project.js";
 import { DEFAULT_WORKSPACE, type Workspace } from "./workspace.js";
 
@@ -18,6 +22,11 @@ export interface PatchAppConfigResult {
   appConfigExists: boolean;
   /** Informational: interceptor list already existed before patching. */
   withInterceptorsAlreadyPresent?: boolean;
+  /**
+   * Set when the file exists but its `providers` array could not be found
+   * (e.g. restructured by hand): the snippet to add manually.
+   */
+  manual?: string;
 }
 
 const HTTP_MODULE = "@angular/common/http";
@@ -143,14 +152,23 @@ function patchProvideHttpClient(
     return;
   }
 
-  // Merge missing interceptor identifiers into the existing array.
+  // Merge missing interceptor identifiers into the existing array, each at its
+  // canonical position (before the first known interceptor that comes after
+  // it); interceptors the user added stay where they are.
   const list = withInterceptors
     .getArguments()[0]
     ?.asKind(SyntaxKind.ArrayLiteralExpression);
   if (!list) return;
-  const present = new Set(list.getElements().map((e) => e.getText()));
+  const order = interceptorOrder();
   for (const name of interceptorNames) {
-    if (!present.has(name)) list.addElement(name);
+    const elements = list.getElements().map((e) => e.getText());
+    if (elements.includes(name)) continue;
+    const rank = order.get(name) ?? Number.POSITIVE_INFINITY;
+    const at = elements.findIndex(
+      (e) => (order.get(e) ?? Number.NEGATIVE_INFINITY) > rank,
+    );
+    if (at === -1) list.addElement(name);
+    else list.insertElement(at, name);
   }
 }
 
@@ -185,7 +203,7 @@ function patchBaseApiProvider(arr: ArrayLiteralExpression): void {
  */
 export async function patchAppConfigForHttp(
   cwd: string,
-  config: NgxBaseCliConfig,
+  config: NgBaseConfig,
   ws: Workspace = DEFAULT_WORKSPACE,
 ): Promise<PatchAppConfigResult> {
   const appConfigPath = path.join(cwd, ws.appDir, "app.config.ts");
@@ -219,15 +237,20 @@ export async function patchAppConfigForHttp(
   }
 
   const providers = findProvidersArray(sf);
-  if (providers) {
-    // ApiClient injects HttpClient; the cache interceptor is always registered.
-    ensureNamedImports(sf, HTTP_MODULE, [
-      "provideHttpClient",
-      "withInterceptors",
-    ]);
-    patchProvideHttpClient(providers, ixNames);
-    patchBaseApiProvider(providers);
+  if (!providers) {
+    return {
+      patched: false,
+      appConfigExists: true,
+      manual: buildProviderSnippet(bindings.map((b) => b.name)),
+    };
   }
+  // ApiClient injects HttpClient; the cache interceptor is always registered.
+  ensureNamedImports(sf, HTTP_MODULE, [
+    "provideHttpClient",
+    "withInterceptors",
+  ]);
+  patchProvideHttpClient(providers, ixNames);
+  patchBaseApiProvider(providers);
 
   const after = sf.getFullText();
   if (after === before) {
@@ -245,4 +268,14 @@ export async function patchAppConfigForHttp(
     appConfigExists: true,
     withInterceptorsAlreadyPresent: withInterceptorsAlreadyPresent || undefined,
   };
+}
+
+/** The providers to add by hand when app.config.ts cannot be patched. */
+export function buildProviderSnippet(interceptorNames: string[]): string {
+  return [
+    "providers: [",
+    `  provideHttpClient(withInterceptors([${interceptorNames.join(", ")}])),`,
+    "  { provide: BASE_API_URL, useValue: environment.baseApiUrl },",
+    "]",
+  ].join("\n");
 }

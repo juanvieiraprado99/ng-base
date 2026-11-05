@@ -1,585 +1,207 @@
-# ngx-base-cli
+# ng-base
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/node/v/ngx-base-cli)](https://nodejs.org/)
-[![npm](https://img.shields.io/npm/v/ngx-base-cli)](https://www.npmjs.com/package/ngx-base-cli)
+[![Node](https://img.shields.io/node/v/ng-base)](https://nodejs.org/)
+[![npm](https://img.shields.io/npm/v/ng-base)](https://www.npmjs.com/package/ng-base)
 
 > 🇵🇹 **Português:** [README.pt-PT.md](README.pt-PT.md)
 
-CLI to scaffold an HTTP core for Angular projects — `ApiClient`, response cache (interceptor-based), auth token store + allowlisted auth interceptor, error/logging interceptors and an optional app structure. The workflow is inspired by [shadcn/ui](https://ui.shadcn.com): the code **lives in your repository** and you can customize it freely.
+Copy an HTTP core into your Angular app — `ApiClient`, response cache, `BASE_API_URL` — and add **modules** (auth, errors, logging, layout) one command at a time. Like [shadcn/ui](https://ui.shadcn.com): the code is **copied into your repository and belongs to you**. ng-base never syncs or regenerates it; edit it however you like.
 
 *Made with love by Juan for the Angular community <3*
 
+```bash
+npx ng-base init          # the core
+npx ng-base add auth      # + a module
+npx ng-base list          # what is available / installed
+```
+
 ## Prerequisites
 
-- **Node.js** ≥ 18
-- An **Angular** project with `package.json` at the root (where you run the command)
-- If `@angular/core` is not found in `package.json`, the CLI will ask whether you want to continue anyway.
-- For the **`httpResource`** option on `GET`: Angular **19.2+** (see the [documentation](https://angular.dev/guide/http/http-resource))
+- **Node.js** ≥ 20
+- An **Angular** project (run the commands at its root, next to `package.json`)
+- `ApiClient.resource()` (`httpResource`) is added automatically on Angular **19.2+**
 
-## Quick install
-
-At your Angular project root:
+## `init` — the core
 
 ```bash
-npx ngx-base-cli@latest init
+npx ng-base@latest init
 ```
 
-Pre-release versions (`alpha` tag):
+Asks two things — the API base URL and where cached responses live (`localStorage`, `sessionStorage` or `memory`) — then lets you pick modules to add right away. Everything else is detected from `angular.json` and the project: target app, `sourceRoot`, selector prefix, file naming convention, path aliases.
 
-```bash
-npx ngx-base-cli@beta init
-```
-
-The flow is **interactive**. When finished, **`.ngx-base-cli.json`** is created at the root — required for `add` and `update`.
-
-### `init` prompts (summary)
-
-| Prompt | Default / notes |
-|--------|-----------------|
-| Setup mode | **Quick (preset)** (recommended) or **Custom (step-by-step wizard)** |
-| `BASE_API_URL` | `https://api.example.com` (must start with `http://` or `https://`) |
-| Output directory | `src/app/core` (**relative** path from the project root) |
-| `cache.interface` imports | **Alias** (`@core/interfaces/...`) or **relative** (`../interfaces/...`) |
-| `httpResource` on `GET` | Only if Angular ≥ **19.2** |
-| `CacheService` engine | `localStorage` (default), `sessionStorage`, or `memory` (e.g. SSR) |
-| HTTP interceptors | Multi-select: `AuthInterceptor` (Bearer), `ErrorInterceptor` (401/403/5xx), `LoggingInterceptor` (dev-only logging) |
-| Barrel `services/index.ts` | Default **yes** |
-| Base folder structure | Default **no**; generates `layout/`, `pages/`, `routes/`, `shared/` under `src/app` and subfolders under `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`) |
-| Existing files | Asks whether to **overwrite** (default **no**; with `--yes` they are kept). `app.html` / `app.routes.ts` are never overwritten — routes are merged |
-
-### Typical structure after `init`
-
-With `outputDir` = `src/app/core` and optional interceptors:
+It writes:
 
 ```text
+src/environments/environment.ts, environment.prod.ts   # baseApiUrl
 src/app/core/
-├── interfaces/
-│   └── cache.interface.ts
-├── services/
-│   ├── api-client.ts         # ApiClient — inject it in feature services
-│   ├── cache.service.ts
-│   ├── cache.storage.ts      # CACHE_STORAGE (local / session / memory)
-│   ├── auth-token.store.ts   # with AuthInterceptor or project structure
-│   └── index.ts              # if barrel was generated
-├── tokens/
-│   ├── api.tokens.ts         # BASE_API_URL
-│   ├── routes.tokens.ts      # LOGIN_ROUTE / FORBIDDEN_ROUTE (error interceptor / guard)
-│   └── auth.tokens.ts        # AUTH_ALLOWED_URLS, skipAuth() (with AuthInterceptor)
-└── interceptors/
-    ├── cache.interceptor.ts    # always (serves withCache() GETs)
-    ├── auth.interceptor.ts     # optional
-    ├── error.interceptor.ts    # optional
-    └── logging.interceptor.ts  # optional
-src/environments/
-├── environment.ts
-└── environment.prod.ts
+├── services/api-client.ts          # ApiClient — inject it in feature services
+├── services/cache.service.ts       # CacheService
+├── services/cache.storage.ts       # CACHE_STORAGE (local / session / memory, SSR-safe)
+├── interfaces/cache.interface.ts
+├── tokens/api.tokens.ts            # BASE_API_URL
+└── interceptors/cache.interceptor.ts
+.ng-base.json                       # settings + installed modules
 ```
 
-### Extra structure with **Base folder structure** enabled
+and wires the project (AST/JSONC patches that keep your formatting and comments):
 
-```text
-src/app/
-├── core/
-│   ├── directives/
-│   ├── enum/
-│   ├── guards/
-│   │   └── auth.guard.ts                # authGuard (CanMatchFn → LOGIN_ROUTE)
-│   ├── interceptors/
-│   ├── interfaces/
-│   ├── pipes/
-│   ├── services/
-│   ├── tokens/
-│   └── utils/
-├── layout/
-│   ├── private/
-│   │   ├── components/
-│   │   ├── private.component.html       # <router-outlet />
-│   │   └── private.component.ts         # PrivateComponent (logged-in shell)
-│   └── public/
-│       ├── components/
-│       ├── public.component.html        # <router-outlet />
-│       └── public.component.ts          # PublicComponent (logged-out shell)
-├── pages/
-│   └── landing-page/
-│       ├── components/
-│       ├── interfaces/
-│       ├── services/
-│       ├── landing-page.component.html
-│       └── landing-page.component.ts
-├── routes/
-│   ├── private.routes.ts                # PRIVATE_ROUTES ('app', canMatch: [authGuard])
-│   └── public.routes.ts                 # PUBLIC_ROUTES  (loads PublicComponent + landing)
-├── shared/
-└── app.routes.ts                        # PUBLIC_ROUTES + PRIVATE_ROUTES + '**' (merged into an existing file)
+- `app.config.ts`: `provideHttpClient(withInterceptors([cacheInterceptor]))` and `{ provide: BASE_API_URL, useValue: environment.baseApiUrl }`
+- `angular.json`: production `fileReplacements` for the environment file
+- `tsconfig.json`: the `@core/*` path alias (skip with `--no-tsconfig` → relative imports)
+
+Non-interactive (CI, scripts):
+
+```bash
+npx ng-base init --yes --api-url https://api.acme.dev --storage memory --with auth,errors
+npx ng-base init --yes --all          # core + every module
 ```
 
-> `PrivateComponent` and `PublicComponent` act as **shells** for authenticated and public areas. Add your area-specific `header`/`sidebar` here and keep `<router-outlet />` for child routes. The route files use `@layout/*` and `@pages/*` aliases when `importStyle` is `alias`; if you decline the `tsconfig.json` patch (or pass `--no-tsconfig`) everything is generated with relative imports instead.
+| Flag | Description |
+|------|-------------|
+| `--api-url <url>` | `BASE_API_URL` written to the environments |
+| `--storage local\|session\|memory` | cache storage |
+| `-w, --with <modules>` / `--all` | add modules right away |
+| `--naming auto\|modern\|suffixed` | file naming (default: detected) |
+| `--no-tsconfig` | don't touch `tsconfig.json`; relative imports |
+| `--project <name>` | `angular.json` project (multi-project workspaces) |
+| `-y, --yes` | no prompts; existing files are kept |
+| `--overwrite` | replace files that already exist |
+| `--dry-run` | show what would be written |
 
-## After `init`
+## `add` — modules
 
-### 1. Path alias `@core/*` (if you chose alias imports)
+```bash
+npx ng-base add auth errors      # one or more
+npx ng-base add                  # pick from a list
+```
 
-In `tsconfig.json` (and `tsconfig.app.json` if applicable):
+| Module | Files (in `core/` unless noted) | Wiring |
+|--------|----------------------------------|--------|
+| **auth** | `tokens/auth.tokens.ts` (`AUTH_ALLOWED_URLS`, `skipAuth()`, `LOGIN_ROUTE`), `services/auth-token.store.ts`, `interceptors/auth.interceptor.ts`, `guards/auth.guard.ts` | `authInterceptor` first in `withInterceptors` |
+| **errors** | `interceptors/error.interceptor.ts` (`HttpErrorBus`, `FORBIDDEN_ROUTE`) | `errorInterceptor` after auth |
+| **logging** | `interceptors/logging.interceptor.ts` (dev only) | `loggingInterceptor` after errors |
+| **layout** | `layout/{public,private}/`, `pages/landing-page/`, `routes/{public,private}.routes.ts` (in `src/app`) | routes merged into `app.routes.ts`; `@layout/@pages/@shared` aliases |
 
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@core/*": ["src/app/core/*"],
-      "@layout/*": ["src/app/layout/*"],
-      "@pages/*": ["src/app/pages/*"],
-      "@shared/*": ["src/app/shared/*"]
-    }
-  }
+Modules are **independent**: each imports only from the core and from itself, so they can be added in any order. Interceptors are inserted at their canonical position (auth → errors → logging → cache last); interceptors you added yourself stay where they are. If `app.config.ts` was restructured and can't be patched, `add` prints the snippet to paste.
+
+Files that already exist are **never replaced** without `--overwrite` (or a yes to the prompt); re-adding an installed module is a no-op. `--dry-run` shows the plan.
+
+**auth after layout:** the private route was generated without a guard (with a `// TODO`); `add auth` doesn't rewrite your routes, it reminds you to add `canMatch: [authGuard]`. Added in the other order, the guard is already there.
+
+## `generate service`
+
+```bash
+npx ng-base generate service user --endpoint /users     # alias: ng-base g service user
+```
+
+Writes `core/services/user.ts` (or `user.service.ts`) — a `UserService` that uses `inject(ApiClient)`. For components, pipes, directives etc. use `ng generate`.
+
+## `list` and `doctor`
+
+- `list` (`ls`): every module, whether it is installed, and the command to add it.
+- `doctor`: checks the files of each installed module, the environments, the path aliases and the `app.config.ts` providers/interceptors. Moved or deleted files are warnings — it's your code.
+
+## Using the generated code
+
+### `ApiClient`
+
+Thin `HttpClient` wrapper that prefixes `BASE_API_URL` and exposes cache/retry as options. Use it by **composition** in feature services:
+
+```typescript
+@Injectable({ providedIn: 'root' })
+export class UserService {
+  private readonly api = inject(ApiClient);
+  list() { return this.api.get<User[]>('/users', { cache: { ttlMinutes: 5 }, retry: 2 }); }
 }
 ```
 
-Adjust the path if your `outputDir` differs from `src/app/core`. The `@layout/*`, `@pages/*`, and `@shared/*` aliases are used by generated files when **Base folder structure** is enabled.
-
-> Note: the `tsconfig.json` patch only inserts the missing `paths` entries — comments and formatting are preserved (the same goes for the `angular.json` `fileReplacements` patch). It does not add `baseUrl` (deprecated in TypeScript 6); paths are written relative to the tsconfig.
-
-### 2. Environments and `angular.json` (production file replacements)
-
-`init` generates:
-
-- `src/environments/environment.ts`
-- `src/environments/environment.prod.ts`
-
-If `angular.json` exists, `init` also tries to ensure your production build replaces `environment.ts` with `environment.prod.ts` via `fileReplacements` (idempotent patch).
-
-### 3. HTTP providers and `BASE_API_URL`
-
-The **`BASE_API_URL`** token is generated in **`tokens/api.tokens.ts`**. `init` shows an example with relative imports from `src/app`; alternatively:
-
 ```typescript
-import { ApplicationConfig } from '@angular/core';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { environment } from '../environments/environment';
-import { BASE_API_URL } from '@core/tokens/api.tokens';
-import { authInterceptor } from '@core/interceptors/auth.interceptor';
-import { errorInterceptor } from '@core/interceptors/error.interceptor';
-import { loggingInterceptor } from '@core/interceptors/logging.interceptor';
-import { cacheInterceptor } from '@core/interceptors/cache.interceptor';
-
-export const appConfig: ApplicationConfig = {
-  providers: [
-    provideHttpClient(withInterceptors([authInterceptor, errorInterceptor, loggingInterceptor, cacheInterceptor])),
-    { provide: BASE_API_URL, useValue: environment.baseApiUrl },
-  ],
-};
+get<T>(endpoint, options?: { params?, headers?, context?, cache?: boolean | { ttlMinutes? }, retry?: number }): Observable<T>
+post / put / patch<T>(endpoint, body, options?): Observable<T>
+delete<T>(endpoint, options?: { …, body? }): Observable<T>
+resource<T>(() => endpoint | undefined, options?)   // httpResource, Angular 19.2+
+invalidateCache(endpoint, params?): void
+url(endpoint): string     // absolute URLs are kept; base + endpoint joined with one '/'
 ```
 
-`cacheInterceptor` is always generated and registered (keep it last). The others are only present if you generated them.
+`retry` only retries network errors and 5xx (500 ms apart). `cache: true` = 10 minutes.
 
-`init` can also patch `src/app/app.config.ts` automatically (imports + `provideHttpClient(...)` + `{ provide: BASE_API_URL, useValue: environment.baseApiUrl }`). `provideHttpClient(withInterceptors([...]))` is always added (`ApiClient` needs `HttpClient`; the cache interceptor is always registered), and an existing `withInterceptors([...])` list is merged. A legacy `BASE_API_URL` import from `cache.service` is moved to `tokens/api.tokens`.
+### Cache
 
-### 4. Auth token (if you generated `AuthInterceptor`)
-
-The CLI generates **`services/auth-token.store.ts`** — a signal-based store. Set the token after login and clear it on logout:
-
-```typescript
-const auth = inject(AuthTokenStore);
-auth.set(response.accessToken); // after login
-auth.clear();                   // on logout
-```
-
-The interceptor adds `Authorization: Bearer <token>` **only to URLs in `AUTH_ALLOWED_URLS`** (default: `BASE_API_URL`), matched by origin + path prefix — so the token never leaks to third-party or look-alike hosts (`api.example.com.attacker.io`). Allow more APIs, or opt a request out (login, refresh, public endpoints):
-
-```typescript
-// app.config.ts
-{ provide: AUTH_ALLOWED_URLS, useValue: [environment.baseApiUrl, 'https://files.example.com/api'] },
-
-// a request that must not carry the token
-this.api.post('/auth/login', credentials, { context: skipAuth() });
-```
-
-`auth.clear()` wipes the response cache, and so does `auth.set()` whenever the token changes — the cache can outlive the in-memory token (e.g. in `localStorage` after a reload), so a new login never sees the previous user's cached data. When the error interceptor gets a **401 for a request the auth interceptor authenticates** (allowlisted, not `skipAuth()`), it clears the token and redirects; 401s from third-party APIs or from `skipAuth()` calls such as a failed login are just re-thrown. `authGuard` and the error interceptor redirect to `LOGIN_ROUTE` (default `/login`); override it in `providers`: `{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' }`. The store is in-memory — add persistence there if you need the session to survive a reload.
-
-## Generated files — reference
-
-### `services/api-client.ts` — `ApiClient`
-
-Thin `HttpClient` wrapper that prefixes `BASE_API_URL` and exposes cache/retry as options. Use it by **composition** in your feature services (`inject(ApiClient)`), not inheritance.
-
-```typescript
-get<T>(endpoint: string, options?: GetOptions): Observable<T>
-post<T>(endpoint: string, body: unknown, options?: RequestOptions): Observable<T>
-put / patch  — same as post
-delete<T>(endpoint: string, options?: RequestOptions & { body?: unknown }): Observable<T>
-invalidateCache(endpoint: string, params?: QueryParams): void
-url(endpoint: string): string   // absolute URL
-
-interface RequestOptions { params?: HttpParams | Record<string, …>; headers?: …; context?: HttpContext }
-interface GetOptions extends RequestOptions {
-  cache?: boolean | { ttlMinutes?: number };  // true = 10 minutes
-  retry?: number;                             // network errors / 5xx only, 500 ms apart
-}
-```
-
-With `useHttpResource: true` (Angular ≥ 19.2) it also gets **`resource<T>(() => endpoint | undefined, { cache?, ...HttpResourceOptions })`**, returning `HttpResourceRef<T | undefined>` — call it in an injection context; return `undefined` to skip the request.
-
-### `interceptors/cache.interceptor.ts`
-
-Serves opted-in **GET** requests from `CacheService` and stores successful responses, keyed by `urlWithParams` (different query strings are cached separately; falsy bodies like `0` are cached too). Opt in through `ApiClient` (`{ cache: true }`) or from any `HttpClient` call:
+`cacheInterceptor` serves opted-in **GET** JSON responses from `CacheService`, keyed by `urlWithParams`. Opt in through `ApiClient` (`{ cache: true }`) or any `HttpClient` call:
 
 ```typescript
 this.http.get('/api/countries', { context: withCache({ ttlMinutes: 60 }) });
 ```
 
-Only JSON responses are cached (`responseType: 'blob' | 'text' | 'arraybuffer'` requests always hit the network). `ApiClient.url()` leaves absolute URLs (`https://…`, `//…`) untouched and joins base + endpoint with a single `/`.
+`CACHE_STORAGE` picks the backend (`browserStorage("local" | "session")` or `memoryStorage()`); swap it in `providers`. With Web Storage the cache is a no-op on the server (SSR-safe).
 
-### `services/cache.service.ts` + `services/cache.storage.ts`
-
-- `CacheService`: `get<T>(key)`, `set(key, value, minutes)`, `remove(key)`, `clear()` — plain JSON entries under a `ngx-base-cli:` key prefix (Unicode-safe), with expiration.
-- `CACHE_STORAGE`: the backing storage, chosen by `storageEngine` (`browserStorage("local")`, `browserStorage("session")` or `memoryStorage()`). Swap it in `providers` without re-running the CLI. With Web Storage, caching is a no-op on the server (SSR-safe).
-
-### `interfaces/cache.interface.ts`
-
-`CacheObject` (stored entry shape). `CacheOptions` is kept only so a legacy `base.service.ts` keeps compiling.
-
-### Migrating from `BaseService` (≤ 0.1.0-beta.2)
-
-`update` generates `api-client.ts` and leaves your old `base.service.ts` in place (it still compiles) with a warning. Then, per service:
+### Auth (`add auth`)
 
 ```typescript
-// before
-export class UserService extends BaseService {}
-this.userService.get('/users', { enabled: true, minutesToExpire: 5 }, 2, params);
-
-// after
-export class UserService {
-  private readonly api = inject(ApiClient);
-  list() { return this.api.get<User[]>('/users', { cache: { ttlMinutes: 5 }, retry: 2, params }); }
-}
+const auth = inject(AuthTokenStore);
+auth.set(response.accessToken); // after login — also drops the cache when the token changes
+auth.clear();                   // on logout — drops the token and the cache
 ```
 
-When nothing imports `BaseService` any more, delete `base.service.ts`.
-
-## `add` command — feature artifacts
-
-Generates a feature artifact under the configured `outputDir`. The artifact type is chosen with `-t, --type` (default **`service`**). Requires `.ngx-base-cli.json`.
-
-| `--type` | Generated file(s) (`outputDir = src/app/core`) |
-|----------|-------------------------------------------------|
-| `service` (default) | `core/services/<kebab>.service.ts` (`inject(ApiClient)`, endpoint `/<kebab>`) |
-| `component` | `shared/components/<kebab>/<kebab>.component.ts` (+ `.html` / stylesheet) — reusable UI lives in `shared/`, `core/` is for app-wide singletons |
-| `guard` | `core/guards/<kebab>.guard.ts` (functional `CanActivateFn`) |
-| `resolver` | `core/resolvers/<kebab>.resolver.ts` (functional `ResolveFn`) |
-| `pipe` | `core/pipes/<kebab>.pipe.ts` (`PipeTransform`, `name: '<camel>'`) |
-| `directive` | `core/directives/<kebab>.directive.ts` (`selector: '[app<Pascal>]'`) |
-| `interface` | `core/interfaces/<kebab>.interface.ts` (`export interface <Pascal>`) |
-| `store` | `core/stores/<kebab>.store.ts` (signal-based store) |
-| `enum` | `core/enum/<kebab>.enum.ts` (`export enum <Pascal>`) |
-
-```bash
-npx ngx-base-cli add user                       # service (default)
-npx ngx-base-cli add product-catalog
-npx ngx-base-cli add user --type component
-npx ngx-base-cli add auth --type guard
-npx ngx-base-cli add user --type resolver
-npx ngx-base-cli add truncate-text --type pipe
-npx ngx-base-cli add highlight --type directive
-npx ngx-base-cli add user --type interface
-npx ngx-base-cli add cart --type store
-npx ngx-base-cli add order-status --type enum
-```
-
-#### Component flags
-
-`add --type component` accepts two extra flags:
-
-| Flag | Default | Effect |
-|------|---------|--------|
-| `--inline-template` | off | Inline `template:` in the decorator; no separate `.html` file |
-| `--style <ext>` | `scss` | Stylesheet extension: `scss`, `css`, or `none` (no `styleUrl`) |
-
-```bash
-# default: .ts + .html + .scss
-npx ngx-base-cli add user --type component
-
-# inline template, no stylesheet — single .ts file
-npx ngx-base-cli add user --type component --inline-template --style none
-
-# external template + .css stylesheet
-npx ngx-base-cli add user --type component --style css
-```
-
-Generated `user.component.ts` (inline template, no style):
+The interceptor adds `Authorization: Bearer <token>` **only to URLs in `AUTH_ALLOWED_URLS`** (default: `BASE_API_URL`), matched by origin + path prefix — never to third-party or look-alike hosts. A **401 on a request it authenticated** clears the token and redirects to `LOGIN_ROUTE` (default `/login`) with `returnUrl`; 401s from other APIs or `skipAuth()` calls (e.g. a failed login) are just re-thrown.
 
 ```typescript
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+// app.config.ts
+{ provide: AUTH_ALLOWED_URLS, useValue: [environment.baseApiUrl, 'https://files.example.com/api'] },
+{ provide: LOGIN_ROUTE, useValue: '/auth/sign-in' },
 
-@Component({
-  selector: 'app-user',
-  template: '<section class="app-user"><!-- UserComponent --></section>',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-})
-export class UserComponent {}
+// a request that must not carry the token
+this.api.post('/auth/login', credentials, { context: skipAuth() });
 ```
 
-Generated `cart.store.ts` (`add cart --type store`):
+The store is in-memory — add persistence there if the session must survive a reload.
 
-```typescript
-import { computed, Injectable, signal } from '@angular/core';
+### Errors (`add errors`)
 
-@Injectable({ providedIn: 'root' })
-export class CartStore {
-  private readonly _loading = signal(false);
+403 → `FORBIDDEN_ROUTE` (default `/forbidden`); 5xx → `inject(HttpErrorBus).serverErrors$` (toasts, logging). Errors are always re-thrown.
 
-  readonly loading = this._loading.asReadonly();
-  readonly ready = computed(() => !this._loading());
+## Naming and workspaces
 
-  setLoading(value: boolean): void {
-    this._loading.set(value);
-  }
-}
-```
+`init` targets the `angular.json` project from `--project`, else `defaultProject`, else the first application, and saves it in `.ng-base.json`. It detects the naming convention — `angular.json` schematics with `type: "component"`, existing `*.component.ts` files → `suffixed`; a suffixless `app.ts` or Angular ≥ 20 → `modern`:
 
-> `service` also requires `api-client.ts` in the configured `outputDir` (run `init`/`update` first). With the default `outputDir`, `add user` lands at **`src/app/core/services/user.service.ts`**.
-
-Example generated service file (`outputDir = src/app/core`):
-
-```typescript
-import { inject, Injectable } from '@angular/core';
-import { ApiClient } from './api-client';
-
-@Injectable({ providedIn: 'root' })
-export class UserService {
-  private readonly api = inject(ApiClient);
-  private readonly endpoint = '/user';
-
-  list<T = unknown>() {
-    return this.api.get<T[]>(this.endpoint);
-  }
-
-  getById<T = unknown>(id: string | number) {
-    return this.api.get<T>(`${this.endpoint}/${id}`);
-  }
-}
-```
-
-### Example usage in a component
-
-```typescript
-import { Component, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { ApiClient } from '@core/services/api-client';
-
-@Component({
-  selector: 'app-user-list',
-  template: `...`,
-})
-export class UserListComponent {
-  private readonly api = inject(ApiClient);
-
-  readonly users = toSignal(
-    this.api.get<User[]>('/users', { params: { page: 1, limit: 20 }, cache: true, retry: 2 }),
-  );
-
-  refreshUsers(): void {
-    this.api.invalidateCache('/users', { page: 1, limit: 20 });
-  }
-}
-```
-
-## `remove` command (alias `rm`)
-
-Deletes a generated artifact and drops its entries from the manifest. Same `-t, --type` as `add`. Asks for confirmation before deleting; for `component` it removes the whole feature folder (since `--inline-template` / `--style` change which files exist).
-
-```bash
-npx ngx-base-cli remove user --type pipe
-npx ngx-base-cli rm user --type component        # removes shared/components/user/ (or the legacy core/components/user/)
-npx ngx-base-cli remove order-status --type enum
-```
-
-If nothing matches on disk, the command is a no-op and reports it.
-
-## `update` command
-
-Regenerates **`init`** files from **`.ngx-base-cli.json`**, compares with disk, and shows a **colored diff**; asks for confirmation before overwriting each changed file.
-
-Useful after upgrading **ngx-base-cli** or when you want generated code to match the saved config.
-
-```bash
-npx ngx-base-cli update
-```
-
-Apply all updates without per-file prompts:
-
-```bash
-npx ngx-base-cli update --yes
-# or
-npx ngx-base-cli update -y
-```
-
-By default, files you have **locally edited** since the CLI wrote them are detected (via the manifest) and **skipped** to avoid losing your changes. To overwrite them too, pass `-f, --force`:
-
-```bash
-npx ngx-base-cli update --force
-```
-
-## `list` command
-
-Shows the sync status of every file that `init` would generate, without touching disk. Statuses come from the manifest: **in sync**, **out of date** (pristine CLI output the template would now regenerate differently), **locally edited**, or **absent**. The command exits with a **non-zero code** when any file is out of date or absent, so it can gate CI.
-
-```bash
-npx ngx-base-cli list
-```
-
-Output example:
-
-```
-✅  src/app/core/interfaces/cache.interface.ts     present, in sync
-✅  src/app/core/services/cache.service.ts         present, in sync
-⚠️   src/app/core/services/api-client.ts            out of date
-❌  src/app/core/interceptors/auth.interceptor.ts  absent
-```
-
-Useful to audit the project state before running `update`.
-
-## `doctor` command
-
-Validates your **setup** after `init` (where `list` validates generated **files**). It checks:
-
-- Base files present (`cache.interface.ts`, `cache.service.ts`, `cache.storage.ts`, `api-client.ts`, `cache.interceptor.ts`, `tokens/api.tokens.ts`)
-- `src/environments/environment.ts` and `environment.prod.ts`
-- `tsconfig.json` path aliases (`@core/*`, and `@layout/*` / `@pages/*` / `@shared/*` when project structure is enabled)
-- `src/app/app.config.ts` wires `provideHttpClient(...)`, the `BASE_API_URL` provider, and every generated interceptor (`cacheInterceptor` missing is an error)
-- `AuthTokenStore` is present when `AuthInterceptor` or the project structure was generated
-
-Exits with a **non-zero code** when any check is an **error**, so it can gate CI.
-
-```bash
-npx ngx-base-cli doctor
-```
-
-Output example:
-
-```
-XX  cache.service.ts present
-      Expected at src/app/core/services/cache.service.ts. Run `ngx-base-cli init`.
-OK  api-client.ts present
-!!  alias @core/*
-      Add it to tsconfig.json compilerOptions.paths.
-OK  provideHttpClient()
-OK  BASE_API_URL provider
-```
-
-## `--yes` flag (init)
-
-Fully non-interactive (CI-friendly): no prompts at all. Pick the preset with `--preset` (defaults to `standard`); existing files are kept and the `tsconfig.json` aliases are added automatically (`--no-tsconfig` to skip them and generate relative imports):
-
-```bash
-npx ngx-base-cli init --preset full --yes
-npx ngx-base-cli init -y                 # standard
-npx ngx-base-cli init --preset minimal   # interactive confirm, no preset question
-```
-
-Presets:
-
-| Preset | Description |
-|--------|-------------|
-| `minimal` | api client + cache (localStorage), only the cache interceptor |
-| `standard` | minimal + auth interceptor (allowlist) + error interceptor + barrel |
-| `full` | standard + base folder structure (layout, pages, routes, shared) |
-
-## `--dry-run` flag (init)
-
-Preview what `init` would generate without writing any file to disk:
-
-```bash
-npx ngx-base-cli init --dry-run
-```
-
-## Workspace and naming (`init --project`, `--naming`)
-
-`init` reads `angular.json` to find the target application — `--project <name>`, else `defaultProject`, else the first `application` project — and uses its **`sourceRoot`** (app dir, environments, `app.config.ts`, `app.routes.ts`, `fileReplacements`) and **`prefix`** (selectors of generated components/directives). Multi-project workspaces work out of the box:
-
-```bash
-npx ngx-base-cli init --project admin --preset full --yes
-# → projects/admin/src/app/core/…, selectors adm-*, fileReplacements only on "admin"
-```
-
-The chosen `project` is saved in `.ngx-base-cli.json`, so `add`, `update`, `list` and `doctor` target the same app.
-
-**Naming convention.** `init` detects how the project names files and saves it as `naming`:
-
-1. `angular.json` schematics with `type: "component"` / `type: "service"` (what `ng update` to v20 adds) → `suffixed`
-2. existing `*.component.ts` files → `suffixed`; a suffixless `app.ts` → `modern`
-3. otherwise Angular ≥ 20 → `modern`, older → `suffixed`
-
-Override with `--naming modern|suffixed` (or pick it in the wizard).
-
-| Artifact | `modern` (Angular v20+ style guide) | `suffixed` |
-|----------|-------------------------------------|------------|
-| component | `user-card/user-card.ts` · `UserCard` | `user-card/user-card.component.ts` · `UserCardComponent` |
+| | `modern` (Angular v20+ style guide) | `suffixed` |
+|-|-------------------------------------|------------|
+| core | `cache.ts`, `cache-storage.ts`, `api-tokens.ts`, `cache-interceptor.ts` | `cache.service.ts`, `cache.storage.ts`, `api.tokens.ts`, `cache.interceptor.ts` |
+| layout | `private-layout.ts` · `PrivateLayout` | `private.component.ts` · `PrivateComponent` |
 | service | `user.ts` · `UserService` | `user.service.ts` · `UserService` |
-| directive | `highlight.ts` · `Highlight` | `highlight.directive.ts` · `HighlightDirective` |
-| pipe / guard / resolver / store | `truncate-pipe.ts`, `auth-guard.ts`, `user-resolver.ts`, `cart-store.ts` | `truncate.pipe.ts`, `auth.guard.ts`, `user.resolver.ts`, `cart.store.ts` |
-| interface | `user.model.ts` · `User` | `user.interface.ts` · `User` |
-| core files | `cache.ts`, `cache-storage.ts`, `api-tokens.ts`, `cache-interceptor.ts`, `cache.model.ts` | `cache.service.ts`, `cache.storage.ts`, `api.tokens.ts`, `cache.interceptor.ts`, `cache.interface.ts` |
-| layouts / landing | `private-layout.ts` · `PrivateLayout`, `landing-page.ts` · `LandingPage` | `private.component.ts` · `PrivateComponent`, `landing-page.component.ts` · `LandingPageComponent` |
 
-`api-client.ts`, `*.routes.ts` and `*.enum.ts` are the same in both. Configs created before this option existed have no `naming` key and keep `suffixed`, so `update` never renames your files.
+Use `--cwd <dir>` on any command to run it against another folder (monorepos).
 
-## `--cwd` option
+## `.ng-base.json`
 
-Runs the command as if the project root were another folder (useful in monorepos):
+Settings `add` and `generate` need to write code that matches what `init` wrote. It has a `$schema` for editor autocomplete.
 
-```bash
-npx ngx-base-cli init --cwd ./apps/web
-npx ngx-base-cli add users --cwd ./apps/web
-npx ngx-base-cli update --cwd ./apps/web
-```
+| Property | Default | Description |
+|----------|---------|-------------|
+| `outputDir` | `src/app/core` | where the core lives |
+| `baseApiUrl` | `https://api.example.com` | written to the environments |
+| `importStyle` | `alias` | `alias` (`@core/…`) or `relative` |
+| `useHttpResource` | Angular ≥ 19.2 | `ApiClient.resource()` |
+| `storageEngine` | `localStorage` | `localStorage`, `sessionStorage`, `memory` |
+| `naming` | detected | `modern` or `suffixed` |
+| `project` | detected | `angular.json` project |
+| `modules` | `[]` | installed modules |
 
-## `.ngx-base-cli.json`
+## Upgrading from ngx-base-cli 0.1
 
-File at the **Angular project root** (same level as `package.json`). Missing values are filled with CLI defaults when the config is read; invalid values fall back to the default with a warning.
+The package was renamed **ngx-base-cli → ng-base**. The first `ng-base` command in a project converts `.ngx-base-cli.json` into `.ng-base.json` (`generate*Interceptor` / `generateProjectStructure` flags become `modules`) and removes the old file. `.ngx-base-cli.manifest.json` is no longer used — delete it. `update`, `remove` and the `add <name> --type …` generators are gone: the code is yours after install, and `ng generate` covers components, pipes and directives. `init --preset` still works (deprecated) and maps to `--with`.
 
-`init` writes a `"$schema": "https://unpkg.com/ngx-base-cli/schema.json"` entry, so VS Code and other editors autocomplete and validate the file. The schema is also shipped in the package (`node_modules/ngx-base-cli/schema.json`).
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `outputDir` | `string` | `src/app/core` | Base folder for generated files |
-| `baseApiUrl` | `string` | `https://api.example.com` | URL used in the `BASE_API_URL` example |
-| `importStyle` | `"alias"` \| `"relative"` | `"alias"` | Import style for the cache model |
-| `useHttpResource` | `boolean` | `false` | `GET` with `httpResource` (Angular ≥ 19.2) |
-| `storageEngine` | `string` | `"localStorage"` | `"localStorage"`, `"sessionStorage"`, or `"memory"` |
-| `generateAuthInterceptor` | `boolean` | `false` | Generates `interceptors/auth.interceptor.ts` |
-| `authTokenName` / `authTokenImportPath` | `string` | — | **Deprecated** — ignored; the interceptor reads `AuthTokenStore` |
-| `generateErrorInterceptor` | `boolean` | `false` | Generates `interceptors/error.interceptor.ts` |
-| `generateLoggingInterceptor` | `boolean` | `false` | Generates `interceptors/logging.interceptor.ts` |
-| `generateBarrel` | `boolean` | `true` | Generates `services/index.ts` |
-| `generateProjectStructure` | `boolean` | `false` | Generates `layout/`, `pages/landing-page/`, `routes/`, `shared/` under `src/app` and empty subfolders under `core/` (`directives`, `enum`, `guards`, `interceptors`, `pipes`, `utils`); creates `app.routes.ts` / `app.html` only when missing (otherwise merges routes) |
-| `naming` | `"modern"` \| `"suffixed"` | detected by `init` (`"suffixed"` when missing) | File/class naming convention (see *Workspace and naming*) |
-| `project` | `string` | resolved by `init` | `angular.json` project to target; `init` saves the detected one so a later `angular.json` change cannot retarget the CLI. Empty = auto-detect |
-
-## `.ngx-base-cli.manifest.json`
-
-Alongside the config, `init`, `add`, and `update` maintain **`.ngx-base-cli.manifest.json`** in the project root — a sha256 hash of each generated file. This lets `list` and `update` tell pristine CLI output apart from files you edited by hand (so they can be skipped on update). Safe to commit; do not edit by hand.
-
-## Local development (CLI repository)
+## Local development
 
 ```bash
 npm install
-npm run build
-node dist/index.js init
-```
-
-During development you can use:
-
-```bash
-npm run dev -- init
-```
-
-Checks (the same ones CI runs):
-
-```bash
-npm run check && npm run typecheck && npm test   # lint, types, unit + integration tests
-npm run e2e                                       # ng new → init → ng build (needs network)
-npm run e2e -- modern-full                        # a single scenario (also: suffixed-relative-ssr)
-npm run schema                                    # regenerate schema.json after changing CONFIG_FIELDS
+npm run dev -- init --cwd ../my-app      # run from source
+npm run check && npm run typecheck && npm test
+npm run e2e                               # ng new → init → add → ng build (network)
+npm run e2e -- modern                     # one scenario (also: suffixed-relative-ssr)
+npm run schema                            # regenerate schema.json after changing CONFIG_FIELDS
 ```
 
 ## License

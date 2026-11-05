@@ -3,12 +3,10 @@ import { Command } from "commander";
 import pc from "picocolors";
 import { runAdd } from "./commands/add.js";
 import { runDoctor } from "./commands/doctor.js";
+import { runGenerate } from "./commands/generate.js";
 import { runInit } from "./commands/init.js";
 import { runList } from "./commands/list.js";
-import { runRemove } from "./commands/remove.js";
-import { runUpdate } from "./commands/update.js";
-import type { ComponentStyle } from "./lib/artifact-plan.js";
-import { ADD_TYPES, type AddType } from "./lib/naming.js";
+import { MODULE_IDS } from "./lib/config.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -23,163 +21,110 @@ async function run(fn: () => Promise<void>): Promise<void> {
   }
 }
 
+const cwdOption = ["-c, --cwd <dir>", "Angular project directory"] as const;
+
 const program = new Command();
 
 program
-  .name("ngx-base-cli")
+  .name("ng-base")
   .description(
-    "CLI to scaffold ApiClient, response cache and HTTP interceptors in Angular projects",
+    "Copy an HTTP core (ApiClient, cache, interceptors) and optional modules into your Angular app — the code is yours to edit",
   )
   .version(version);
 
 program
   .command("init")
   .description(
-    "Generate the HTTP core (ApiClient, cache, tokens) and optional interceptors/structure",
+    "Install the core: ApiClient, response cache, BASE_API_URL, environments",
   )
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
+  .option(...cwdOption, process.cwd())
+  .option("--api-url <url>", "BASE_API_URL for the environment files")
+  .option("--storage <engine>", "cache storage: local | session | memory")
   .option(
-    "-p, --preset <name>",
-    "Use a preset without asking: minimal | standard | full",
+    "-w, --with <modules>",
+    `also add modules (comma-separated): ${MODULE_IDS.join(", ")}`,
   )
+  .option("--all", "also add every module")
   .option(
-    "-y, --yes",
-    "Non-interactive: no prompts (preset defaults to standard; existing files are kept)",
+    "--naming <style>",
+    "file naming: auto (detect) | modern (user-card.ts) | suffixed (user-card.component.ts)",
   )
   .option(
     "--no-tsconfig",
-    "Do not add path aliases to tsconfig.json (generates relative imports)",
+    "do not add path aliases to tsconfig.json (relative imports)",
   )
-  .option(
-    "--project <name>",
-    "angular.json project to target (multi-project workspaces)",
-  )
-  .option(
-    "--naming <style>",
-    "File naming: auto (detect) | modern (user-card.ts) | suffixed (user-card.component.ts)",
-  )
-  .option("--dry-run", "Show what would be generated without writing files")
-  .action(
-    (opts: {
-      cwd?: string;
-      yes?: boolean;
-      dryRun?: boolean;
-      preset?: string;
-      tsconfig?: boolean;
-      project?: string;
-      naming?: string;
-    }) =>
-      run(() =>
-        runInit(opts.cwd ?? process.cwd(), {
-          yes: opts.yes ?? false,
-          dryRun: opts.dryRun ?? false,
-          preset: opts.preset,
-          tsconfig: opts.tsconfig,
-          project: opts.project,
-          naming: opts.naming,
-        }),
-      ),
+  .option("--project <name>", "angular.json project (multi-project workspaces)")
+  .option("-y, --yes", "no prompts (defaults; existing files are kept)")
+  .option("--overwrite", "replace files that already exist")
+  .option("--dry-run", "show what would be written")
+  .option("--preset <name>", "deprecated: minimal | standard | full")
+  .action((opts) =>
+    run(() =>
+      runInit(opts.cwd, {
+        yes: opts.yes,
+        dryRun: opts.dryRun,
+        overwrite: opts.overwrite,
+        apiUrl: opts.apiUrl,
+        storage: opts.storage,
+        with: opts.with,
+        all: opts.all,
+        preset: opts.preset,
+        tsconfig: opts.tsconfig,
+        project: opts.project,
+        naming: opts.naming,
+      }),
+    ),
   );
 
 program
   .command("add")
   .description(
-    `Generate a feature artifact (${ADD_TYPES.join("|")}) under <outputDir>/`,
+    `Add modules to the project (${MODULE_IDS.join(", ")}); no names = pick from a list`,
   )
-  .argument("<name>", "feature name (e.g. user, user-profile)")
-  .option(
-    "-t, --type <type>",
-    `artifact type: ${ADD_TYPES.join(" | ")}`,
-    "service",
-  )
-  .option(
-    "--inline-template",
-    "(component) inline template instead of a separate .html file",
-  )
-  .option("--style <ext>", "(component) stylesheet: scss | css | none", "scss")
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action(
-    (
-      name: string,
-      opts: {
-        cwd?: string;
-        type?: string;
-        inlineTemplate?: boolean;
-        style?: string;
-      },
-    ) =>
-      run(() =>
-        runAdd(
-          name,
-          (opts.type ?? "service") as AddType,
-          opts.cwd ?? process.cwd(),
-          {
-            inlineTemplate: opts.inlineTemplate ?? false,
-            style: (opts.style ?? "scss") as ComponentStyle,
-          },
-        ),
-      ),
-  );
-
-program
-  .command("remove")
-  .alias("rm")
-  .description(
-    `Delete a generated artifact (${ADD_TYPES.join("|")}) and its manifest entries`,
-  )
-  .argument("<name>", "feature name (e.g. user, user-profile)")
-  .option(
-    "-t, --type <type>",
-    `artifact type: ${ADD_TYPES.join(" | ")}`,
-    "service",
-  )
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action((name: string, opts: { cwd?: string; type?: string }) =>
+  .argument("[modules...]", "modules to add")
+  .option(...cwdOption, process.cwd())
+  .option("-y, --yes", "no prompts (existing files are kept)")
+  .option("--overwrite", "replace files that already exist")
+  .option("--dry-run", "show what would be written")
+  .action((modules: string[], opts) =>
     run(() =>
-      runRemove(
-        name,
-        (opts.type ?? "service") as AddType,
-        opts.cwd ?? process.cwd(),
-      ),
-    ),
-  );
-
-program
-  .command("update")
-  .description(
-    "Regenerate init-generated files from .ngx-base-cli.json (shows diff)",
-  )
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .option("-y, --yes", "Apply all updates without prompts")
-  .option("-f, --force", "Also overwrite files with local edits")
-  .action((opts: { cwd?: string; yes?: boolean; force?: boolean }) =>
-    run(() =>
-      runUpdate(
-        opts.cwd ?? process.cwd(),
-        opts.yes ?? false,
-        opts.force ?? false,
-      ),
+      runAdd(modules, opts.cwd, {
+        yes: opts.yes,
+        overwrite: opts.overwrite,
+        dryRun: opts.dryRun,
+      }),
     ),
   );
 
 program
   .command("list")
-  .description(
-    "Show sync status of each generated file (in-sync/out-of-date/locally-edited/absent)",
-  )
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action((opts: { cwd?: string }) =>
-    run(() => runList(opts.cwd ?? process.cwd())),
+  .alias("ls")
+  .description("List the modules and which ones are installed")
+  .option(...cwdOption, process.cwd())
+  .action((opts) => run(() => runList(opts.cwd)));
+
+program
+  .command("generate")
+  .alias("g")
+  .description("Generate a feature service that uses ApiClient")
+  .argument("<type>", "what to generate: service")
+  .argument("<name>", "name, e.g. user or user-profile")
+  .option(...cwdOption, process.cwd())
+  .option("--endpoint <path>", "API path of the resource (default /<name>)")
+  .option("--overwrite", "replace the file if it exists")
+  .action((type: string, name: string, opts) =>
+    run(() =>
+      runGenerate(type, name, opts.cwd, {
+        endpoint: opts.endpoint,
+        overwrite: opts.overwrite,
+      }),
+    ),
   );
 
 program
   .command("doctor")
-  .description(
-    "Validate post-init setup (base files, aliases, providers, auth token)",
-  )
-  .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .action((opts: { cwd?: string }) =>
-    run(() => runDoctor(opts.cwd ?? process.cwd())),
-  );
+  .description("Check the setup (files, aliases, providers, interceptors)")
+  .option(...cwdOption, process.cwd())
+  .action((opts) => run(() => runDoctor(opts.cwd)));
 
 program.parse();

@@ -2,9 +2,9 @@ import os from "node:os";
 import path from "node:path";
 import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_CONFIG } from "../src/lib/config";
 import { patchAppConfigForHttp } from "../src/lib/patch-app-config";
 import { patchAppRoutes } from "../src/lib/patch-app-routes";
-import { PRESETS } from "../src/lib/presets";
 import { detectIndentation } from "../src/lib/ts-project";
 
 // app.config.ts / app.routes.ts exactly as `ng new` (Angular 20+) writes them.
@@ -35,7 +35,11 @@ describe("AST patches keep the project's formatting", () => {
   it("app.config.ts: one provider per line, 2-space indent", async () => {
     const file = path.join(dir, "src/app/app.config.ts");
     await fse.outputFile(file, NG_NEW_APP_CONFIG);
-    await patchAppConfigForHttp(dir, { ...PRESETS.full, naming: "modern" });
+    await patchAppConfigForHttp(dir, {
+      ...DEFAULT_CONFIG,
+      naming: "modern",
+      modules: ["auth", "errors", "layout"],
+    });
     const out = await fse.readFile(file, "utf8");
     expect(out).toContain(`  providers: [
     provideBrowserGlobalErrorListeners(),

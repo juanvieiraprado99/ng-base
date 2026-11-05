@@ -6,71 +6,42 @@ import {
   parseAngularCoreVersion,
   versionSupportsHttpResource,
 } from "../lib/angular-version.js";
-import type { NgxBaseCliConfig, StorageEngine } from "../lib/config.js";
-import { DEFAULT_NGX_BASE_CONFIG, writeNgxBaseConfig } from "../lib/config.js";
 import {
-  apiTokensFile,
-  buildGenerationTargets,
-  interceptorBindings,
-  pathAliases,
-} from "../lib/generate-plan.js";
-import { importFromSrcApp } from "../lib/import-paths.js";
-import {
-  type Manifest,
-  manifestKey,
-  readManifest,
-  sha256,
-  writeManifest,
-} from "../lib/manifest.js";
+  DEFAULT_CONFIG,
+  isModuleId,
+  MODULE_IDS,
+  type ModuleId,
+  type NgBaseConfig,
+  readNgBaseConfig,
+  type StorageEngine,
+  writeNgBaseConfig,
+} from "../lib/config.js";
+import { installModules, printNextSteps } from "../lib/install.js";
+import { getModule } from "../lib/modules.js";
 import {
   detectNamingStyle,
   NAMING_STYLES,
   type NamingStyle,
 } from "../lib/naming-style.js";
 import { detectPackageManager, dlxCommand } from "../lib/package-manager.js";
-import { patchAngularJsonFileReplacements } from "../lib/patch-angular-json.js";
-import { patchAppConfigForHttp } from "../lib/patch-app-config.js";
-import { patchAppRoutes } from "../lib/patch-app-routes.js";
-import {
-  applyTsconfigAliases,
-  planTsconfigAliases,
-} from "../lib/patch-tsconfig.js";
-import {
-  PRESET_DESCRIPTIONS,
-  PRESETS,
-  type PresetName,
-} from "../lib/presets.js";
-import { renderGenerationTarget } from "../lib/render-target.js";
-import { validateRelativePath, validateUrl } from "../lib/validators.js";
+import { validateUrl } from "../lib/validators.js";
 import { resolveWorkspace, type Workspace } from "../lib/workspace.js";
 
-async function promptPresetSelection(): Promise<NgxBaseCliConfig | null> {
-  const presetName = await p.select<PresetName>({
-    message: "Which preset would you like to use?",
-    options: (Object.keys(PRESETS) as PresetName[]).map((key) => ({
-      value: key,
-      label: key,
-      hint: PRESET_DESCRIPTIONS[key],
-    })),
-    initialValue: "minimal" as PresetName,
-  });
-  if (p.isCancel(presetName)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
-  p.log.success(
-    pc.green(
-      `Using preset "${presetName}": ${PRESET_DESCRIPTIONS[presetName]}`,
-    ),
-  );
-  return { ...PRESETS[presetName] };
-}
-
 export interface InitOptions {
-  /** Non-interactive: no prompts at all (preset defaults to "standard"). */
+  /** Non-interactive: no prompts; existing files are kept. */
   yes?: boolean;
   dryRun?: boolean;
-  /** Preset to use without asking. */
+  /** Replace files that already exist. */
+  overwrite?: boolean;
+  /** BASE_API_URL written to the environment files. */
+  apiUrl?: string;
+  /** Cache storage: local | session | memory. */
+  storage?: string;
+  /** Modules to add right away (comma-separated or list). */
+  with?: string | string[];
+  /** Add every module. */
+  all?: boolean;
+  /** @deprecated 0.1 presets, mapped to `with`. */
   preset?: string;
   /** Skip the tsconfig.json path-alias patch (falls back to relative imports). */
   tsconfig?: boolean;
@@ -82,8 +53,76 @@ export interface InitOptions {
 
 const NAMING_CHOICES = ["auto", ...NAMING_STYLES] as const;
 
-function isPresetName(value: string): value is PresetName {
-  return Object.hasOwn(PRESETS, value);
+const STORAGE_CHOICES: Record<string, StorageEngine> = {
+  local: "localStorage",
+  session: "sessionStorage",
+  memory: "memory",
+  localStorage: "localStorage",
+  sessionStorage: "sessionStorage",
+};
+
+const LEGACY_PRESETS: Record<string, ModuleId[]> = {
+  minimal: [],
+  standard: ["auth", "errors"],
+  full: ["auth", "errors", "layout"],
+};
+
+function fail(message: string): void {
+  p.outro(pc.red(message));
+  process.exitCode = 1;
+}
+
+/** Parses `--with a,b` / `--all` / `--preset` into module ids. */
+function requestedModules(
+  opts: InitOptions,
+): { ok: true; ids: ModuleId[] | null } | { ok: false; error: string } {
+  if (opts.all) return { ok: true, ids: [...MODULE_IDS] };
+  if (opts.preset !== undefined) {
+    const ids = LEGACY_PRESETS[opts.preset];
+    if (!ids) {
+      return {
+        ok: false,
+        error: `Unknown preset "${opts.preset}". Presets are deprecated — use --with ${MODULE_IDS.join(",")} or --all.`,
+      };
+    }
+    p.log.warn(
+      pc.yellow(
+        `--preset is deprecated: same as ${ids.length ? `--with ${ids.join(",")}` : "no --with"}.`,
+      ),
+    );
+    return { ok: true, ids };
+  }
+  if (opts.with === undefined) return { ok: true, ids: null };
+  const raw = (Array.isArray(opts.with) ? opts.with : [opts.with])
+    .flatMap((v) => v.split(","))
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const unknown = raw.filter((v) => !isModuleId(v));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error: `Unknown module(s): ${unknown.join(", ")}. Available: ${MODULE_IDS.join(", ")}.`,
+    };
+  }
+  return { ok: true, ids: raw as ModuleId[] };
+}
+
+async function readAngularDeps(
+  cwd: string,
+): Promise<Record<string, string> | string> {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!(await fse.pathExists(pkgPath))) {
+    return "package.json not found. Run this command from the project root.";
+  }
+  try {
+    const pkg = JSON.parse(await fse.readFile(pkgPath, "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    return { ...pkg.dependencies, ...pkg.devDependencies };
+  } catch {
+    return "package.json is not valid JSON. Fix it and re-run.";
+  }
 }
 
 export async function runInit(
@@ -91,84 +130,63 @@ export async function runInit(
   opts: InitOptions = {},
 ): Promise<void> {
   const yes = opts.yes ?? false;
-  const dryRun = opts.dryRun ?? false;
-  p.intro(pc.inverse(" ngx-base-cli init "));
-
-  if (opts.preset !== undefined && !isPresetName(opts.preset)) {
-    p.outro(
-      pc.red(
-        `Unknown preset "${opts.preset}". Use one of: ${Object.keys(PRESETS).join(", ")}.`,
-      ),
-    );
-    process.exitCode = 1;
-    return;
-  }
+  p.intro(pc.inverse(" ng-base init "));
 
   if (
     opts.naming !== undefined &&
     !(NAMING_CHOICES as readonly string[]).includes(opts.naming)
   ) {
-    p.outro(
-      pc.red(
-        `Unknown naming "${opts.naming}". Use one of: ${NAMING_CHOICES.join(", ")}.`,
-      ),
+    return fail(
+      `Unknown naming "${opts.naming}". Use one of: ${NAMING_CHOICES.join(", ")}.`,
     );
-    process.exitCode = 1;
-    return;
   }
+  const storageFlag =
+    opts.storage === undefined ? undefined : STORAGE_CHOICES[opts.storage];
+  if (opts.storage !== undefined && !storageFlag) {
+    return fail(
+      `Unknown storage "${opts.storage}". Use one of: local, session, memory.`,
+    );
+  }
+  if (opts.apiUrl !== undefined) {
+    const error = validateUrl(opts.apiUrl);
+    if (error) return fail(`Invalid --api-url: ${error}`);
+  }
+  const modulesFlag = requestedModules(opts);
+  if (!modulesFlag.ok) return fail(modulesFlag.error);
 
-  const pkgPath = path.join(cwd, "package.json");
-  if (!(await fse.pathExists(pkgPath))) {
-    p.outro(
-      pc.red("package.json not found. Run this command from the project root."),
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  const pkgRaw = await fse.readFile(pkgPath, "utf8");
-  let pkg: {
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-  try {
-    pkg = JSON.parse(pkgRaw);
-  } catch {
-    p.outro(pc.red("package.json is not valid JSON. Fix it and re-run."));
-    process.exitCode = 1;
-    return;
-  }
-  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  if (!deps["@angular/core"] && yes) {
-    p.log.warn(
-      pc.yellow("@angular/core is not listed in dependencies — continuing."),
-    );
-  } else if (!deps["@angular/core"]) {
-    const ok = await p.confirm({
-      message: "@angular/core is not listed in dependencies. Continue anyway?",
-      initialValue: false,
-    });
-    if (p.isCancel(ok) || !ok) {
-      p.cancel("Cancelled.");
-      return;
+  const deps = await readAngularDeps(cwd);
+  if (typeof deps === "string") return fail(deps);
+  if (!deps["@angular/core"]) {
+    if (yes) {
+      p.log.warn(
+        pc.yellow("@angular/core is not listed in dependencies — continuing."),
+      );
+    } else {
+      const ok = await p.confirm({
+        message:
+          "@angular/core is not listed in dependencies. Continue anyway?",
+        initialValue: false,
+      });
+      if (p.isCancel(ok) || !ok) {
+        p.cancel("Cancelled.");
+        return;
+      }
     }
   }
-
   const angularVersion = parseAngularCoreVersion(deps["@angular/core"]);
-  const httpResourceSupported = versionSupportsHttpResource(angularVersion);
 
   let ws: Workspace;
   try {
     ws = await resolveWorkspace(cwd, opts.project);
   } catch (err) {
-    p.outro(pc.red(err instanceof Error ? err.message : String(err)));
-    process.exitCode = 1;
-    return;
+    return fail(err instanceof Error ? err.message : String(err));
   }
-  if (ws.projectName) {
+
+  const existing = await readNgBaseConfig(cwd);
+  if (existing) {
     p.log.info(
       pc.dim(
-        `Project: ${ws.projectName} (${ws.appDir}, prefix "${ws.prefix}")`,
+        "Already initialized — re-installing the core; existing files are kept. Add modules with `ng-base add`.",
       ),
     );
   }
@@ -179,632 +197,137 @@ export async function runInit(
   const detected = await detectNamingStyle(cwd, ws, angularMajor);
   const forcedNaming =
     opts.naming === "modern" || opts.naming === "suffixed"
-      ? opts.naming
+      ? (opts.naming as NamingStyle)
       : undefined;
-  const naming: NamingStyle = forcedNaming ?? detected.style;
+  const naming = forcedNaming ?? existing?.naming ?? detected.style;
+
   p.log.info(
     pc.dim(
-      `Naming: ${naming} (${forcedNaming ? "--naming" : detected.reason})`,
+      [
+        ws.projectName &&
+          `Project: ${ws.projectName} (${ws.appDir}, prefix "${ws.prefix}")`,
+        `Naming: ${naming} (${forcedNaming ? "--naming" : existing ? ".ng-base.json" : detected.reason})`,
+        angularVersion && `Angular ${angularVersion}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
     ),
   );
 
-  /** Apply workspace-derived defaults (outputDir under the app dir, naming, project). */
-  const withWorkspace = (c: NgxBaseCliConfig): NgxBaseCliConfig => ({
-    ...c,
-    outputDir:
-      c.outputDir === DEFAULT_NGX_BASE_CONFIG.outputDir
-        ? `${ws.appDir}/core`
-        : c.outputDir,
+  let config: NgBaseConfig = {
+    ...DEFAULT_CONFIG,
+    outputDir: `${ws.appDir}/core`,
+    useHttpResource: versionSupportsHttpResource(angularVersion),
+    ...existing,
     naming,
     // Pin the resolved project so a later angular.json change cannot retarget.
-    project: opts.project ?? ws.projectName ?? "",
+    project: opts.project ?? existing?.project ?? ws.projectName ?? "",
+    ...(opts.apiUrl ? { baseApiUrl: opts.apiUrl } : {}),
+    ...(storageFlag ? { storageEngine: storageFlag } : {}),
+  };
+
+  let extra: ModuleId[] = modulesFlag.ids ?? [];
+  if (!yes) {
+    const answers = await promptInit(config, modulesFlag.ids === null, {
+      apiUrl: opts.apiUrl === undefined && !existing,
+      storage: storageFlag === undefined && !existing,
+    });
+    if (!answers) return;
+    config = { ...config, ...answers.config };
+    if (answers.modules) extra = answers.modules;
+  }
+
+  const result = await installModules(cwd, config, ws, ["core", ...extra], {
+    yes,
+    overwrite: opts.overwrite,
+    dryRun: opts.dryRun,
+    tsconfig: opts.tsconfig,
   });
-
-  let config: NgxBaseCliConfig | null = null;
-
-  if (opts.preset !== undefined && isPresetName(opts.preset)) {
-    config = withWorkspace(PRESETS[opts.preset]);
-    p.log.success(
-      pc.green(
-        `Using preset "${opts.preset}": ${PRESET_DESCRIPTIONS[opts.preset]}`,
-      ),
-    );
-  } else if (yes) {
-    config = withWorkspace(PRESETS.standard);
-    p.log.success(
-      pc.green(
-        `Using preset "standard": ${PRESET_DESCRIPTIONS.standard} (pass --preset to choose)`,
-      ),
-    );
-  } else {
-    const setupMode = await p.select<"preset" | "customize" | "custom">({
-      message: "How would you like to set up ngx-base?",
-      options: [
-        {
-          value: "preset",
-          label: "Quick — choose a preset",
-          hint: "Recommended (same as ngx-base-cli init --yes)",
-        },
-        {
-          value: "customize",
-          label: "Customize a preset",
-          hint: "Start from a preset, then tweak",
-        },
-        {
-          value: "custom",
-          label: "Custom — step-by-step wizard",
-          hint: "Fine-grained options",
-        },
-      ],
-      initialValue: "preset",
-    });
-    if (p.isCancel(setupMode)) {
-      p.cancel("Cancelled.");
-      return;
-    }
-    const namingHint = forcedNaming ? "--naming" : detected.reason;
-    if (setupMode === "preset") {
-      const base = await promptPresetSelection();
-      config = base ? withWorkspace(base) : null;
-    } else if (setupMode === "customize") {
-      const base = await promptPresetSelection();
-      config = base
-        ? await runInteractivePrompts(
-            deps,
-            httpResourceSupported,
-            angularVersion,
-            namingHint,
-            withWorkspace(base),
-          )
-        : null;
-    } else {
-      config = await runInteractivePrompts(
-        deps,
-        httpResourceSupported,
-        angularVersion,
-        namingHint,
-        withWorkspace(DEFAULT_NGX_BASE_CONFIG),
-      );
-    }
-  }
-
-  if (!config) return;
-
-  if (!yes && !dryRun) {
-    p.note(buildConfigSummary(config), "Configuration");
-    const proceed = await p.confirm({
-      message: "Generate files with this configuration?",
-      initialValue: true,
-    });
-    if (p.isCancel(proceed) || !proceed) {
-      p.cancel("Cancelled.");
-      return;
-    }
-  }
-
-  if (!dryRun && config.importStyle === "alias") {
-    const aliased = await offerTsconfigPatch(cwd, config, ws, {
-      ask: !yes && opts.tsconfig !== false,
-      skip: opts.tsconfig === false,
-    });
-    if (!aliased) {
-      config = { ...config, importStyle: "relative" };
-      p.log.info(
-        pc.dim(
-          "Path aliases not available — generating relative imports instead.",
-        ),
-      );
-    }
-  }
-
-  const targets = buildGenerationTargets(cwd, config, ws);
-
-  if (dryRun) {
-    const lines: string[] = [];
-    for (const t of targets) {
-      const exists = await fse.pathExists(t.outPath);
-      const tag = t.dirOnly
-        ? pc.green("mkdir")
-        : exists && t.createOnly
-          ? pc.dim("keep")
-          : exists
-            ? pc.yellow("overwrite")
-            : pc.green("create");
-      lines.push(
-        `${tag}  ${path.relative(cwd, t.outPath).replace(/\\/g, "/")}`,
-      );
-    }
-    p.note(lines.join("\n"), "Files");
-
-    const patches: string[] = [];
-    if (await fse.pathExists(path.join(cwd, "angular.json"))) {
-      patches.push("angular.json — production fileReplacements");
-    }
-    if (
-      config.importStyle === "alias" &&
-      (await fse.pathExists(path.join(cwd, "tsconfig.json")))
-    ) {
-      patches.push(
-        "tsconfig.json — path aliases (@core/*, @layout/*, @pages/*, @shared/*)",
-      );
-    }
-    if (await fse.pathExists(path.join(cwd, ws.appDir, "app.config.ts"))) {
-      patches.push(
-        `${ws.appDir}/app.config.ts — providers (HTTP + BASE_API_URL)`,
-      );
-    }
-    if (
-      config.generateProjectStructure &&
-      (await fse.pathExists(path.join(cwd, ws.appDir, "app.routes.ts")))
-    ) {
-      patches.push(
-        `${ws.appDir}/app.routes.ts — PUBLIC/PRIVATE routes + wildcard`,
-      );
-    }
-    if (patches.length > 0) {
-      p.note(
-        patches.map((item) => `${pc.cyan("patch")}  ${item}`).join("\n"),
-        "Patches",
-      );
-    }
-    p.outro(pc.green(`Dry run complete — ${targets.length} file(s) planned.`));
+  if (!result) return;
+  if (opts.dryRun) {
+    p.outro(pc.green("Dry run complete — nothing was written."));
     return;
   }
 
-  const existingChecks = await Promise.all(
-    targets.map((t) =>
-      t.dirOnly || t.createOnly
-        ? Promise.resolve(false)
-        : fse.pathExists(t.outPath),
-    ),
-  );
-  const anyExisting = existingChecks.some(Boolean);
-
-  let overwriteAll = false;
-  if (anyExisting && !yes) {
-    const overwriteAnswer = await p.confirm({
-      message: "Some files already exist. Overwrite all existing files?",
-      initialValue: false,
-    });
-    if (p.isCancel(overwriteAnswer)) {
-      p.cancel("Cancelled.");
-      return;
-    }
-    overwriteAll = overwriteAnswer;
-  }
-
-  let skippedExistingCount = 0;
-  // Merge into the existing manifest so entries recorded by `add` survive.
-  const manifest: Manifest = await readManifest(cwd);
-  for (const t of targets) {
-    if (t.dirOnly) {
-      await fse.ensureDir(t.outPath);
-      p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
-      continue;
-    }
-
-    await fse.mkdir(path.dirname(t.outPath), { recursive: true });
-
-    if (await fse.pathExists(t.outPath)) {
-      if (t.createOnly) continue;
-      if (!overwriteAll) {
-        skippedExistingCount++;
-        continue;
-      }
-    }
-
-    const content = await renderGenerationTarget(t);
-    await fse.outputFile(t.outPath, content, "utf8");
-    if (!t.createOnly) {
-      manifest.files[manifestKey(cwd, t.outPath)] = {
-        hash: sha256(content),
-        template: t.template,
-      };
-    }
-    p.log.success(pc.green(`OK: ${path.relative(cwd, t.outPath)}`));
-  }
-  if (skippedExistingCount > 0) {
-    p.log.info(
-      pc.dim(
-        `Skipped ${skippedExistingCount} existing file(s) (overwrite declined).`,
-      ),
-    );
-  }
-
-  await writeNgxBaseConfig(cwd, config);
-  await writeManifest(cwd, manifest);
-
-  const angularJsonPath = path.join(cwd, "angular.json");
-  if (await fse.pathExists(angularJsonPath)) {
-    const angularResult = await patchAngularJsonFileReplacements(cwd, ws);
-    if (!angularResult.ok) {
-      p.log.warn(
-        pc.yellow(
-          "Could not update angular.json (parse error or no application build target). Add fileReplacements for environments manually.",
-        ),
-      );
-    } else if (angularResult.mutated) {
-      p.log.success(
-        pc.green(
-          `OK: ${path.relative(cwd, angularJsonPath)} (production fileReplacements)`,
-        ),
-      );
-    }
-  }
-
-  if (config.generateProjectStructure) {
-    await reportProjectStructurePatches(cwd, ws);
-  }
-
-  const appCfgResult = await patchAppConfigForHttp(cwd, config, ws);
-  let noteBody: string;
-  if (appCfgResult.patched) {
-    noteBody = `Updated ${ws.appDir}/app.config.ts with provideHttpClient(withInterceptors(...)) and BASE_API_URL (environment.baseApiUrl).`;
-    if (config.generateAuthInterceptor || config.generateProjectStructure) {
-      noteBody +=
-        "\nAfter login call inject(AuthTokenStore).set(token); the auth interceptor and authGuard read it.";
-    }
-  } else {
-    noteBody = buildProviderNote(config, cwd, ws);
-    if (!appCfgResult.appConfigExists) {
-      noteBody =
-        `No ${ws.appDir}/app.config.ts found — add bootstrap config manually:\n\n` +
-        noteBody;
-    }
-  }
-
-  const nextStepLines = appCfgResult.patched
-    ? ["Next:", "", pc.cyan(noteBody)]
-    : [
-        "Configure providers in your application (adjust imports if needed):",
-        "",
-        pc.cyan(noteBody),
-      ];
-  if (config.useHttpResource) {
-    nextStepLines.push(
-      "",
-      pc.yellow(
-        "httpResource: check its stability status for your Angular version — https://angular.dev/guide/http/http-resource",
-      ),
-    );
-  }
-
-  p.note(nextStepLines.join("\n"), "Next step");
+  await writeNgBaseConfig(cwd, result.config);
+  await printNextSteps(cwd, config, ws, ["core", ...extra]);
 
   const dlx = dlxCommand(await detectPackageManager(cwd));
+  const rest = MODULE_IDS.filter((id) => !result.config.modules.includes(id));
   p.note(
     [
-      `${pc.cyan(`${dlx} ngx-base-cli add user`)}      ${pc.dim("# scaffold a service (inject(ApiClient))")}`,
-      `${pc.cyan(`${dlx} ngx-base-cli doctor`)}        ${pc.dim("# verify setup")}`,
-      `${pc.cyan(`${dlx} ngx-base-cli list`)}          ${pc.dim("# show sync status")}`,
+      ...rest.map(
+        (id) =>
+          `${pc.cyan(`${dlx} ng-base add ${id}`.padEnd(32))} ${pc.dim(getModule(id).description)}`,
+      ),
+      `${pc.cyan(`${dlx} ng-base generate service user`.padEnd(32))} ${pc.dim("service using ApiClient")}`,
+      `${pc.cyan(`${dlx} ng-base doctor`.padEnd(32))} ${pc.dim("check the setup")}`,
     ].join("\n"),
-    "Commands",
+    "More",
   );
-
-  p.outro(pc.green("ngx-base-cli init finished."));
-}
-
-async function runInteractivePrompts(
-  deps: Record<string, string>,
-  httpResourceSupported: boolean,
-  angularVersion: string | null,
-  namingHint: string,
-  defaults: NgxBaseCliConfig = DEFAULT_NGX_BASE_CONFIG,
-): Promise<NgxBaseCliConfig | null> {
-  if (httpResourceSupported) {
-    p.log.info(
-      pc.cyan(
-        `Angular ${angularVersion}: httpResource is available for GET (Angular 19.2+).`,
-      ),
-    );
-  } else if (deps["@angular/core"]) {
-    p.log.info(
-      pc.dim(
-        angularVersion
-          ? `Angular ${angularVersion}: httpResource option is hidden (requires Angular 19.2 or newer).`
-          : "Could not determine Angular version; httpResource is not available in this wizard.",
-      ),
-    );
-  }
-
-  const initialInterceptors: ("auth" | "error" | "logging")[] = [];
-  if (defaults.generateAuthInterceptor) initialInterceptors.push("auth");
-  if (defaults.generateErrorInterceptor) initialInterceptors.push("error");
-  if (defaults.generateLoggingInterceptor) initialInterceptors.push("logging");
-
-  const answers = await p.group(
-    {
-      apiUrl: () =>
-        p.text({
-          message: "BASE_API_URL value (for the provider)",
-          initialValue: defaults.baseApiUrl,
-          placeholder: "https://...",
-          validate: (value) => validateUrl(String(value)),
-        }),
-      outputDir: () =>
-        p.text({
-          message:
-            "Output directory (models and services relative to project root)",
-          initialValue: defaults.outputDir,
-          placeholder: defaults.outputDir,
-          validate: (value) => validateRelativePath(String(value)),
-        }),
-      importStyle: () =>
-        p.select<"alias" | "relative">({
-          message: "Import style for cache.interface",
-          options: [
-            {
-              value: "alias",
-              label: "Path alias (@core/interfaces/cache.interface)",
-            },
-            {
-              value: "relative",
-              label: "Relative (../interfaces/cache.interface)",
-            },
-          ],
-          initialValue: defaults.importStyle,
-        }),
-      useHttpResource: () =>
-        httpResourceSupported
-          ? p.confirm({
-              message: "Use httpResource for the GET method?",
-              initialValue: defaults.useHttpResource,
-            })
-          : undefined,
-      storageEngine: () =>
-        p.select<StorageEngine>({
-          message: "CacheService storage backend",
-          options: [
-            {
-              value: "localStorage",
-              label: "localStorage — persists across sessions",
-            },
-            {
-              value: "sessionStorage",
-              label: "sessionStorage — per browser tab (volatile)",
-            },
-            {
-              value: "memory",
-              label: "memory (Map) — suited for SSR / Node",
-            },
-          ],
-          initialValue: defaults.storageEngine,
-        }),
-      interceptors: () =>
-        p.multiselect<"auth" | "error" | "logging">({
-          message:
-            "HTTP interceptors to generate (space to toggle, enter when done)",
-          options: [
-            {
-              value: "auth",
-              label: "AuthInterceptor",
-              hint: "Bearer token from AuthTokenStore",
-            },
-            {
-              value: "error",
-              label: "ErrorInterceptor",
-              hint: "401→LOGIN_ROUTE, 403→FORBIDDEN_ROUTE, 5xx→HttpErrorBus",
-            },
-            {
-              value: "logging",
-              label: "LoggingInterceptor",
-              hint: "Logs requests in devMode only",
-            },
-          ],
-          required: false,
-          initialValues: initialInterceptors,
-        }),
-      naming: () =>
-        p.select<NamingStyle>({
-          message: "File naming convention",
-          options: [
-            {
-              value: "modern",
-              label: "Modern (Angular v20+): user-card.ts / UserCard",
-              hint:
-                defaults.naming === "modern"
-                  ? `detected: ${namingHint}`
-                  : undefined,
-            },
-            {
-              value: "suffixed",
-              label: "Suffixed: user-card.component.ts / UserCardComponent",
-              hint:
-                defaults.naming === "suffixed"
-                  ? `detected: ${namingHint}`
-                  : undefined,
-            },
-          ],
-          initialValue: defaults.naming,
-        }),
-      generateBarrel: () =>
-        p.confirm({
-          message: "Generate barrel export (services/index.ts)?",
-          initialValue: defaults.generateBarrel,
-        }),
-      generateProjectStructure: () =>
-        p.confirm({
-          message:
-            "Generate base folder structure (layout, pages, routes, shared, and core subfolders)?",
-          initialValue: defaults.generateProjectStructure,
-        }),
-    },
-    {
-      onCancel: () => {
-        p.cancel("Cancelled.");
-        process.exit(0);
-      },
-    },
-  );
-
-  const interceptors = answers.interceptors ?? [];
-
-  return {
-    outputDir: String(answers.outputDir)
-      .trim()
-      .replace(/[/\\]+$/, ""),
-    baseApiUrl: String(answers.apiUrl).trim(),
-    importStyle: answers.importStyle,
-    useHttpResource: Boolean(answers.useHttpResource),
-    storageEngine: answers.storageEngine,
-    generateAuthInterceptor: interceptors.includes("auth"),
-    authTokenName: defaults.authTokenName,
-    authTokenImportPath: defaults.authTokenImportPath,
-    generateErrorInterceptor: interceptors.includes("error"),
-    generateLoggingInterceptor: interceptors.includes("logging"),
-    generateBarrel: answers.generateBarrel,
-    generateProjectStructure: answers.generateProjectStructure,
-    naming: answers.naming,
-    project: defaults.project,
-  };
-}
-
-function buildConfigSummary(config: NgxBaseCliConfig): string {
-  const interceptors = [
-    config.generateAuthInterceptor && "auth",
-    config.generateErrorInterceptor && "error",
-    config.generateLoggingInterceptor && "logging",
-  ].filter(Boolean) as string[];
-
-  const rows: [string, string][] = [
-    ["Output dir", config.outputDir],
-    ["Naming", config.naming],
-    ["Base API URL", config.baseApiUrl],
-    ["Import style", config.importStyle],
-    ["Storage", config.storageEngine],
-    ["httpResource", config.useHttpResource ? "yes" : "no"],
-    ["Interceptors", interceptors.length ? interceptors.join(", ") : "none"],
-    ["Barrel export", config.generateBarrel ? "yes" : "no"],
-    ["Project structure", config.generateProjectStructure ? "yes" : "no"],
-  ];
-
-  const labelWidth = Math.max(...rows.map(([label]) => label.length));
-  return rows
-    .map(([label, value]) => `${label.padEnd(labelWidth)}  ${pc.cyan(value)}`)
-    .join("\n");
-}
-
-/**
- * Ensure the path aliases exist in tsconfig.json. Returns true when the aliases
- * are available afterwards (already present or just added), false otherwise —
- * the caller then falls back to relative imports so the output still compiles.
- */
-async function offerTsconfigPatch(
-  cwd: string,
-  config: NgxBaseCliConfig,
-  ws: Workspace,
-  opts: { ask: boolean; skip: boolean },
-): Promise<boolean> {
-  const plan = await planTsconfigAliases(cwd, pathAliases(config, ws));
-  if (!plan.ok) {
-    if (plan.reason === "invalid") {
-      p.log.warn(pc.yellow("Could not parse tsconfig.json — skipping patch."));
-    }
-    return false;
-  }
-
-  const missing = Object.keys(plan.missing);
-  if (missing.length === 0) {
-    p.log.info("All aliases already present in tsconfig.json — nothing to do.");
-    return true;
-  }
-  if (opts.skip) return false;
-
-  if (opts.ask) {
-    const patchAlias = await p.confirm({
-      message: `Add path aliases (${missing.join(", ")}) to tsconfig.json?`,
-      initialValue: true,
-    });
-    if (p.isCancel(patchAlias) || !patchAlias) return false;
-  }
-
-  for (const alias of missing) {
-    p.log.info(
-      pc.green(`  + "${alias}": ${JSON.stringify(plan.missing[alias])}`),
-    );
-  }
-  await fse.outputFile(
-    plan.file,
-    applyTsconfigAliases(plan.raw, plan.missing),
-    "utf8",
-  );
-  p.log.success(
+  p.outro(
     pc.green(
-      `tsconfig.json updated (${missing.length} alias${missing.length > 1 ? "es" : ""} added).`,
+      "Done — the code is yours now: edit it freely, ng-base won't touch it again.",
     ),
   );
-  return true;
 }
 
-/** Merge routes into an existing app.routes.ts and sanity-check app.html. */
-async function reportProjectStructurePatches(
-  cwd: string,
-  ws: Workspace,
-): Promise<void> {
-  const routes = await patchAppRoutes(cwd, ws);
-  if (routes.exists && !routes.ok) {
-    p.log.warn(
-      pc.yellow(
-        `Could not find the \`routes\` array in ${ws.appDir}/app.routes.ts — add ...PUBLIC_ROUTES, ...PRIVATE_ROUTES manually.`,
-      ),
-    );
-  } else if (routes.patched) {
-    p.log.success(
-      pc.green(`OK: ${ws.appDir}/app.routes.ts (PUBLIC/PRIVATE routes merged)`),
-    );
+async function promptInit(
+  config: NgBaseConfig,
+  askModules: boolean,
+  ask: { apiUrl: boolean; storage: boolean },
+): Promise<{ config: Partial<NgBaseConfig>; modules?: ModuleId[] } | null> {
+  const out: Partial<NgBaseConfig> = {};
+  if (ask.apiUrl) {
+    const apiUrl = await p.text({
+      message: "API base URL (BASE_API_URL)",
+      initialValue: config.baseApiUrl,
+      placeholder: "https://api.example.com",
+      validate: (value) => validateUrl(String(value)),
+    });
+    if (p.isCancel(apiUrl)) return cancelled();
+    out.baseApiUrl = String(apiUrl).trim();
   }
+  if (ask.storage) {
+    const storage = await p.select<StorageEngine>({
+      message: "Where should cached responses live?",
+      options: [
+        {
+          value: "localStorage",
+          label: "localStorage",
+          hint: "survives reloads",
+        },
+        {
+          value: "sessionStorage",
+          label: "sessionStorage",
+          hint: "per browser tab",
+        },
+        { value: "memory", label: "memory", hint: "per app instance / SSR" },
+      ],
+      initialValue: config.storageEngine,
+    });
+    if (p.isCancel(storage)) return cancelled();
+    out.storageEngine = storage;
+  }
+  if (!askModules) return { config: out };
 
-  const appHtml = path.join(cwd, ws.appDir, "app.html");
-  if (await fse.pathExists(appHtml)) {
-    const html = await fse.readFile(appHtml, "utf8");
-    if (!html.includes("<router-outlet")) {
-      p.log.warn(
-        pc.yellow(
-          `${ws.appDir}/app.html has no <router-outlet /> — add it (and import RouterOutlet) so the routes render.`,
-        ),
-      );
-    }
-  }
+  const available = MODULE_IDS.filter((id) => !config.modules.includes(id));
+  if (available.length === 0) return { config: out };
+  const modules = await p.multiselect<ModuleId>({
+    message:
+      "Add modules now? (space to toggle, enter to continue — you can `ng-base add` them later)",
+    options: available.map((id) => ({
+      value: id,
+      label: id,
+      hint: getModule(id).description,
+    })),
+    required: false,
+  });
+  if (p.isCancel(modules)) return cancelled();
+  return { config: out, modules };
 }
 
-function buildProviderNote(
-  config: NgxBaseCliConfig,
-  cwd: string,
-  ws: Workspace,
-): string {
-  const lines: string[] = [];
-  const bindings = interceptorBindings(config);
-
-  lines.push(
-    `import { environment } from '${importFromSrcApp(cwd, path.join(cwd, ws.sourceRoot, "environments/environment.ts"), ws.appDir)}';`,
-  );
-  lines.push(
-    `import { provideHttpClient, withInterceptors } from '@angular/common/http';`,
-  );
-
-  const tokensImport = importFromSrcApp(
-    cwd,
-    path.join(cwd, config.outputDir, apiTokensFile(config)),
-    ws.appDir,
-  );
-  lines.push(`import { BASE_API_URL } from '${tokensImport}';`);
-
-  for (const { name, file } of bindings) {
-    const ip = importFromSrcApp(
-      cwd,
-      path.join(cwd, config.outputDir, file),
-      ws.appDir,
-    );
-    lines.push(`import { ${name} } from '${ip}';`);
-  }
-
-  lines.push("");
-  lines.push("// providers: [");
-  lines.push(
-    `  provideHttpClient(withInterceptors([${bindings.map((b) => b.name).join(", ")}])),`,
-  );
-  lines.push(`  { provide: BASE_API_URL, useValue: environment.baseApiUrl },`);
-  lines.push("// ],");
-
-  return lines.join("\n");
+function cancelled(): null {
+  p.cancel("Cancelled.");
+  return null;
 }

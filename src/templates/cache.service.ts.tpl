@@ -10,7 +10,7 @@ import { CACHE_STORAGE } from "{{IMPORT_CACHE_STORAGE}}";
 export class CacheService {
   private readonly baseUrl = inject(BASE_API_URL, { optional: true }) ?? "";
   private readonly storage = inject(CACHE_STORAGE);
-  private readonly storagePrefix = "ngx-base-cli:";
+  private readonly storagePrefix = "ng-base:";
 
   set(key: string, value: unknown, minutesToExpire: number = 10): void {
     if (!this.storage) return;

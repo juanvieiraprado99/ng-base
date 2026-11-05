@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  camelName,
-  kebabName,
-  pascalName,
-  symbolName,
-} from "../src/lib/naming";
+import { camelName, kebabName, pascalName } from "../src/lib/naming";
 
 describe("name transforms", () => {
   it("kebabName", () => {
@@ -18,28 +13,5 @@ describe("name transforms", () => {
   });
   it("camelName", () => {
     expect(camelName("user-profile")).toBe("userProfile");
-  });
-});
-
-describe("symbolName", () => {
-  it("class suffix for service/component", () => {
-    expect(symbolName("user-profile", "service")).toBe("UserProfileService");
-    expect(symbolName("user", "component")).toBe("UserComponent");
-  });
-  it("camel + suffix for guard/resolver", () => {
-    expect(symbolName("auth", "guard")).toBe("authGuard");
-    expect(symbolName("user-data", "resolver")).toBe("userDataResolver");
-  });
-  it("falls back to Feature for empty-ish input", () => {
-    expect(symbolName("---", "service")).toBe("FeatureService");
-  });
-  it("class suffix for pipe/directive/store", () => {
-    expect(symbolName("user", "pipe")).toBe("UserPipe");
-    expect(symbolName("highlight", "directive")).toBe("HighlightDirective");
-    expect(symbolName("cart", "store")).toBe("CartStore");
-  });
-  it("no suffix for interface/enum", () => {
-    expect(symbolName("user-profile", "interface")).toBe("UserProfile");
-    expect(symbolName("order-status", "enum")).toBe("OrderStatus");
   });
 });

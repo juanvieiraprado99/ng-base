@@ -1,26 +1,3 @@
-export type AddType =
-  | "service"
-  | "component"
-  | "guard"
-  | "resolver"
-  | "pipe"
-  | "directive"
-  | "interface"
-  | "store"
-  | "enum";
-
-export const ADD_TYPES: AddType[] = [
-  "service",
-  "component",
-  "guard",
-  "resolver",
-  "pipe",
-  "directive",
-  "interface",
-  "store",
-  "enum",
-];
-
 export function kebabName(raw: string): string {
   return raw
     .trim()
@@ -40,26 +17,4 @@ export function pascalName(raw: string): string {
 export function camelName(raw: string): string {
   const p = pascalName(raw);
   return p.charAt(0).toLowerCase() + p.slice(1);
-}
-
-const CLASS_SUFFIX: Record<AddType, string> = {
-  service: "Service",
-  component: "Component",
-  guard: "Guard",
-  resolver: "Resolver",
-  pipe: "Pipe",
-  directive: "Directive",
-  interface: "",
-  store: "Store",
-  enum: "",
-};
-
-/** Class/const identifier for a generated artifact, e.g. `UserService`, `userGuard`. */
-export function symbolName(raw: string, type: AddType): string {
-  const base = pascalName(raw) || "Feature";
-  if (type === "guard" || type === "resolver") {
-    const camel = base.charAt(0).toLowerCase() + base.slice(1);
-    return `${camel}${CLASS_SUFFIX[type]}`;
-  }
-  return `${base}${CLASS_SUFFIX[type]}`;
 }

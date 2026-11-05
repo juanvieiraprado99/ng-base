@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [modern-full, suffixed-relative-ssr]
+        scenario: [modern, suffixed-relative-ssr]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
