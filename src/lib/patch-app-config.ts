@@ -10,7 +10,9 @@ import {
   SyntaxKind,
 } from "ts-morph";
 import type { NgxBaseCliConfig } from "./config.js";
+import { apiTokensFile, interceptorBindings } from "./generate-plan.js";
 import { importBetweenFiles } from "./import-paths.js";
+import { DEFAULT_WORKSPACE, type Workspace } from "./workspace.js";
 
 export interface PatchAppConfigResult {
   patched: boolean;
@@ -21,20 +23,29 @@ export interface PatchAppConfigResult {
 
 const HTTP_MODULE = "@angular/common/http";
 
-function needsInterceptors(config: NgxBaseCliConfig): boolean {
-  return (
-    config.generateAuthInterceptor ||
-    config.generateErrorInterceptor ||
-    config.generateLoggingInterceptor
-  );
-}
-
-function interceptorBindingNames(config: NgxBaseCliConfig): string[] {
-  const names: string[] = [];
-  if (config.generateAuthInterceptor) names.push("authInterceptor");
-  if (config.generateErrorInterceptor) names.push("errorInterceptor");
-  if (config.generateLoggingInterceptor) names.push("loggingInterceptor");
-  return names;
+/**
+ * Remove `name` from every import declaration except the one for
+ * `keepModule` (e.g. BASE_API_URL used to live in cache.service). Drops the
+ * declaration when it ends up empty.
+ */
+function removeNamedImportElsewhere(
+  sf: SourceFile,
+  name: string,
+  keepModule: string,
+): void {
+  for (const decl of sf.getImportDeclarations()) {
+    if (decl.getModuleSpecifierValue() === keepModule) continue;
+    const spec = decl.getNamedImports().find((n) => n.getName() === name);
+    if (!spec) continue;
+    spec.remove();
+    if (
+      decl.getNamedImports().length === 0 &&
+      !decl.getDefaultImport() &&
+      !decl.getNamespaceImport()
+    ) {
+      decl.remove();
+    }
+  }
 }
 
 /** Add the given named imports to a module's import declaration, creating it if absent. */
@@ -117,9 +128,14 @@ function patchProvideHttpClient(
   const call = findCallElement(arr, "provideHttpClient");
 
   if (!call) {
-    arr.addElement(`provideHttpClient(withInterceptors([${ix}]))`);
+    arr.addElement(
+      interceptorNames.length > 0
+        ? `provideHttpClient(withInterceptors([${ix}]))`
+        : "provideHttpClient()",
+    );
     return;
   }
+  if (interceptorNames.length === 0) return;
 
   const withInterceptors = findCallArgument(call, "withInterceptors");
   if (!withInterceptors) {
@@ -162,15 +178,16 @@ function patchBaseApiProvider(arr: ArrayLiteralExpression): void {
 }
 
 /**
- * Patch `src/app/app.config.ts` to use `environment.baseApiUrl` and the optional
+ * Patch `<appDir>/app.config.ts` to use `environment.baseApiUrl` and the optional
  * interceptor list. Uses an AST (ts-morph) so formatting/comments survive and an
  * existing `withInterceptors([...])` is merged rather than skipped.
  */
 export async function patchAppConfigForHttp(
   cwd: string,
   config: NgxBaseCliConfig,
+  ws: Workspace = DEFAULT_WORKSPACE,
 ): Promise<PatchAppConfigResult> {
-  const appConfigPath = path.join(cwd, "src/app/app.config.ts");
+  const appConfigPath = path.join(cwd, ws.appDir, "app.config.ts");
   if (!(await fse.pathExists(appConfigPath))) {
     return { patched: false, appConfigExists: false };
   }
@@ -184,68 +201,34 @@ export async function patchAppConfigForHttp(
   const sf = project.createSourceFile("app.config.ts", content);
   const before = sf.getFullText();
 
-  const ixNeeded = needsInterceptors(config);
-  const ixNames = interceptorBindingNames(config);
-  const withInterceptorsAlreadyPresent =
-    ixNeeded && /withInterceptors\s*\(/.test(content);
+  const bindings = interceptorBindings(config);
+  const ixNames = bindings.map((b) => b.name);
+  const withInterceptorsAlreadyPresent = /withInterceptors\s*\(/.test(content);
 
   // Imports.
-  const envFile = path.join(cwd, "src/environments/environment.ts");
+  const envFile = path.join(cwd, ws.sourceRoot, "environments/environment.ts");
   ensureNamedImports(sf, importBetweenFiles(appConfigPath, envFile), [
     "environment",
   ]);
 
-  const cacheSvc = path.join(
-    cwd,
-    config.outputDir,
-    "services/cache.service.ts",
-  );
-  ensureNamedImports(sf, importBetweenFiles(appConfigPath, cacheSvc), [
-    "BASE_API_URL",
-  ]);
+  const apiTokensPath = path.join(cwd, config.outputDir, apiTokensFile(config));
+  const apiTokensImport = importBetweenFiles(appConfigPath, apiTokensPath);
+  removeNamedImportElsewhere(sf, "BASE_API_URL", apiTokensImport);
+  ensureNamedImports(sf, apiTokensImport, ["BASE_API_URL"]);
 
-  if (config.generateAuthInterceptor) {
-    const p = path.join(
-      cwd,
-      config.outputDir,
-      "interceptors/auth.interceptor.ts",
-    );
-    ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
-      "authInterceptor",
-    ]);
-  }
-  if (config.generateErrorInterceptor) {
-    const p = path.join(
-      cwd,
-      config.outputDir,
-      "interceptors/error.interceptor.ts",
-    );
-    ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
-      "errorInterceptor",
-    ]);
-  }
-  if (config.generateLoggingInterceptor) {
-    const p = path.join(
-      cwd,
-      config.outputDir,
-      "interceptors/logging.interceptor.ts",
-    );
-    ensureNamedImports(sf, importBetweenFiles(appConfigPath, p), [
-      "loggingInterceptor",
-    ]);
+  for (const { name, file } of bindings) {
+    const abs = path.join(cwd, config.outputDir, file);
+    ensureNamedImports(sf, importBetweenFiles(appConfigPath, abs), [name]);
   }
 
   const providers = findProvidersArray(sf);
   if (providers) {
-    if (ixNeeded) {
-      ensureNamedImports(sf, HTTP_MODULE, [
-        "provideHttpClient",
-        "withInterceptors",
-      ]);
-      patchProvideHttpClient(providers, ixNames);
-    } else if (findCallElement(providers, "provideHttpClient")) {
-      ensureNamedImports(sf, HTTP_MODULE, ["provideHttpClient"]);
-    }
+    // ApiClient injects HttpClient; the cache interceptor is always registered.
+    ensureNamedImports(sf, HTTP_MODULE, [
+      "provideHttpClient",
+      "withInterceptors",
+    ]);
+    patchProvideHttpClient(providers, ixNames);
     patchBaseApiProvider(providers);
   }
 

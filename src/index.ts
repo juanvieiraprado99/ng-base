@@ -28,26 +28,57 @@ const program = new Command();
 program
   .name("ngx-base-cli")
   .description(
-    "CLI to scaffold BaseService, CacheService, and HTTP artifacts in Angular projects",
+    "CLI to scaffold ApiClient, response cache and HTTP interceptors in Angular projects",
   )
   .version(version);
 
 program
   .command("init")
   .description(
-    "Generate base/cache services, models, and optional interceptors in the project",
+    "Generate the HTTP core (ApiClient, cache, tokens) and optional interceptors/structure",
   )
   .option("-c, --cwd <dir>", "Angular project directory", process.cwd())
-  .option("-y, --yes", "Skip interactive prompts — select a preset instead")
+  .option(
+    "-p, --preset <name>",
+    "Use a preset without asking: minimal | standard | full",
+  )
+  .option(
+    "-y, --yes",
+    "Non-interactive: no prompts (preset defaults to standard; existing files are kept)",
+  )
+  .option(
+    "--no-tsconfig",
+    "Do not add path aliases to tsconfig.json (generates relative imports)",
+  )
+  .option(
+    "--project <name>",
+    "angular.json project to target (multi-project workspaces)",
+  )
+  .option(
+    "--naming <style>",
+    "File naming: auto (detect) | modern (user-card.ts) | suffixed (user-card.component.ts)",
+  )
   .option("--dry-run", "Show what would be generated without writing files")
-  .action((opts: { cwd?: string; yes?: boolean; dryRun?: boolean }) =>
-    run(() =>
-      runInit(
-        opts.cwd ?? process.cwd(),
-        opts.yes ?? false,
-        opts.dryRun ?? false,
+  .action(
+    (opts: {
+      cwd?: string;
+      yes?: boolean;
+      dryRun?: boolean;
+      preset?: string;
+      tsconfig?: boolean;
+      project?: string;
+      naming?: string;
+    }) =>
+      run(() =>
+        runInit(opts.cwd ?? process.cwd(), {
+          yes: opts.yes ?? false,
+          dryRun: opts.dryRun ?? false,
+          preset: opts.preset,
+          tsconfig: opts.tsconfig,
+          project: opts.project,
+          naming: opts.naming,
+        }),
       ),
-    ),
   );
 
 program

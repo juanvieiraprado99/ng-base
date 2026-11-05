@@ -18,11 +18,12 @@ describe("parseAngularCoreVersion", () => {
 });
 
 describe("versionSupportsHttpResource", () => {
-  it("true for 19.1+ and newer majors", () => {
-    expect(versionSupportsHttpResource("19.1.0")).toBe(true);
+  it("true for 19.2+ and newer majors", () => {
+    expect(versionSupportsHttpResource("19.2.0")).toBe(true);
+    expect(versionSupportsHttpResource("19.1.0")).toBe(false);
     expect(versionSupportsHttpResource("20.0.0")).toBe(true);
   });
-  it("false below 19.1 or null", () => {
+  it("false below 19.2 or null", () => {
     expect(versionSupportsHttpResource("19.0.5")).toBe(false);
     expect(versionSupportsHttpResource("18.2.0")).toBe(false);
     expect(versionSupportsHttpResource(null)).toBe(false);

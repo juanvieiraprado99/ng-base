@@ -16,6 +16,7 @@ import {
 } from "../lib/manifest.js";
 import { ADD_TYPES, type AddType, kebabName } from "../lib/naming.js";
 import { applyTemplate } from "../lib/templates.js";
+import { resolveWorkspace } from "../lib/workspace.js";
 
 export async function runAdd(
   featureName: string,
@@ -58,12 +59,13 @@ export async function runAdd(
     return;
   }
 
+  const ws = await resolveWorkspace(cwd, config.project);
   const plan = await planArtifactFiles(
     type,
     featureName,
     cwd,
     config.outputDir,
-    opts,
+    { ...opts, naming: config.naming, prefix: ws.prefix },
   );
   if (!plan.ok) {
     p.outro(pc.red(plan.error));

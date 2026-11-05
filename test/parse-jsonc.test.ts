@@ -15,3 +15,13 @@ describe("parseJsonWithComments", () => {
     expect(parseJsonWithComments('{"x":true}')).toEqual({ x: true });
   });
 });
+
+describe("parseJsonWithComments (jsonc)", () => {
+  it("accepts trailing commas", () => {
+    expect(parseJsonWithComments('{ "a": [1, 2,], }')).toEqual({ a: [1, 2] });
+  });
+
+  it("throws on invalid JSON", () => {
+    expect(() => parseJsonWithComments("{ nope")).toThrow(SyntaxError);
+  });
+});

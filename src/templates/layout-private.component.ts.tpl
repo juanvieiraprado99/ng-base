@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 @Component({
-  selector: 'app-private',
-  templateUrl: './private.component.html',
+  selector: '{{SELECTOR}}',
+  templateUrl: '{{TEMPLATE_URL}}',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterOutlet],
 })
-export class PrivateComponent {}
+export class {{CLASS_NAME}} {}

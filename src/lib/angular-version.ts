@@ -12,11 +12,11 @@ export function parseAngularCoreVersion(
   return `${match[1]}.${match[2]}.${patch}`;
 }
 
-/** httpResource estável a partir do Angular 19.1 (conforme documentação). */
+/** httpResource foi introduzido no Angular 19.2. */
 export function versionSupportsHttpResource(version: string | null): boolean {
   if (!version) return false;
   const parts = version.split(".").map((p) => Number.parseInt(p, 10));
   const major = parts[0] ?? 0;
   const minor = parts[1] ?? 0;
-  return major > 19 || (major === 19 && minor >= 1);
+  return major > 19 || (major === 19 && minor >= 2);
 }

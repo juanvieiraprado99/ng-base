@@ -87,4 +87,60 @@ describe("planArtifactFiles", () => {
     expect(names.some((n) => n.endsWith("user-card.component.css"))).toBe(true);
     expect(res.files[0].vars.STYLE_FIELD).toContain(".css");
   });
+
+  it("modern naming mirrors the Angular v20 style guide / ng g", async () => {
+    const modern = { naming: "modern" as const, prefix: "acme" };
+    const cases: [
+      Parameters<typeof planArtifactFiles>[0],
+      string,
+      string,
+      string,
+    ][] = [
+      [
+        "component",
+        "user-card",
+        "components/user-card/user-card.ts",
+        "UserCard",
+      ],
+      ["directive", "highlight", "directives/highlight.ts", "Highlight"],
+      [
+        "pipe",
+        "truncate-text",
+        "pipes/truncate-text-pipe.ts",
+        "TruncateTextPipe",
+      ],
+      ["guard", "auth", "guards/auth-guard.ts", "authGuard"],
+      ["resolver", "user", "resolvers/user-resolver.ts", "userResolver"],
+      ["interface", "user", "interfaces/user.model.ts", "User"],
+      ["store", "cart", "stores/cart-store.ts", "CartStore"],
+      ["enum", "order-status", "enum/order-status.enum.ts", "OrderStatus"],
+    ];
+    for (const [type, name, file, symbol] of cases) {
+      const res = await planArtifactFiles(type, name, cwd, outDir, modern);
+      expect(res.ok).toBe(true);
+      if (!res.ok) continue;
+      expect(posix(res.files[0].outPath)).toContain(`src/app/core/${file}`);
+      const vars = res.files[0].vars;
+      expect(vars.CLASS_NAME ?? vars.FN_NAME).toBe(symbol);
+    }
+    const comp = await planArtifactFiles(
+      "component",
+      "user-card",
+      cwd,
+      outDir,
+      modern,
+    );
+    if (!comp.ok) throw new Error("plan failed");
+    expect(comp.files[0].vars.SELECTOR).toBe("acme-user-card");
+    expect(comp.files[0].vars.TEMPLATE_FIELD).toContain("./user-card.html");
+    const dir = await planArtifactFiles(
+      "directive",
+      "highlight",
+      cwd,
+      outDir,
+      modern,
+    );
+    if (!dir.ok) throw new Error("plan failed");
+    expect(dir.files[0].vars.SELECTOR).toBe("acmeHighlight");
+  });
 });

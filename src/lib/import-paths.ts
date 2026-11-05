@@ -4,12 +4,13 @@ export function toPosix(p: string): string {
   return p.split(path.sep).join("/");
 }
 
-/** Import TypeScript a partir de `src/app/` até um ficheiro (ex: app.config). */
+/** Import TypeScript a partir do app dir (ex.: `src/app/`, onde vive o app.config) até um ficheiro. */
 export function importFromSrcApp(
   cwd: string,
   absoluteTargetFile: string,
+  appDir = "src/app",
 ): string {
-  const fromDir = path.join(cwd, "src", "app");
+  const fromDir = path.join(cwd, appDir);
   let rel = path.relative(fromDir, absoluteTargetFile);
   rel = toPosix(rel);
   if (!rel.startsWith(".")) {

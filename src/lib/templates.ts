@@ -19,12 +19,27 @@ export function getTemplatesDir(): string {
   return colocated;
 }
 
+/**
+ * Resolve `{{#if NAME}}…{{/if}}` blocks (not nested): the body is kept when
+ * `vars[NAME] === "true"`, removed otherwise. A marker alone on its line takes
+ * its line break with it, so blocks leave no blank lines behind.
+ */
+export function renderConditionals(
+  content: string,
+  vars: Record<string, string>,
+): string {
+  return content.replace(
+    /\{\{#if ([A-Z0-9_]+)\}\}\r?\n?([\s\S]*?)\{\{\/if\}\}\r?\n?/g,
+    (_m, name: string, body: string) => (vars[name] === "true" ? body : ""),
+  );
+}
+
 export async function applyTemplate(
   filename: string,
   vars: Record<string, string>,
 ): Promise<string> {
   const tplPath = path.join(getTemplatesDir(), filename);
-  let content = await fse.readFile(tplPath, "utf8");
+  let content = renderConditionals(await fse.readFile(tplPath, "utf8"), vars);
   for (const [key, value] of Object.entries(vars)) {
     content = content.replaceAll(`{{${key}}}`, value);
   }

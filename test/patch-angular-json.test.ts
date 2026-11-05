@@ -64,4 +64,42 @@ describe("patchAngularJsonFileReplacements", () => {
     const res = await patchAngularJsonFileReplacements(dir);
     expect(res).toEqual({ ok: true, mutated: false });
   });
+
+  it("preserves comments and appends to existing replacements (targets key)", async () => {
+    const p = path.join(dir, "angular.json");
+    await fse.writeFile(
+      p,
+      `{
+  // workspace comment
+  "version": 1,
+  "projects": {
+    "app": {
+      "projectType": "application",
+      "targets": {
+        "build": {
+          "configurations": {
+            "production": {
+              "fileReplacements": [
+                { "replace": "src/a.ts", "with": "src/a.prod.ts" }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`,
+    );
+    const res = await patchAngularJsonFileReplacements(dir);
+    expect(res).toEqual({ ok: true, mutated: true });
+    const out = await fse.readFile(p, "utf8");
+    expect(out).toContain("// workspace comment");
+    expect(out).toContain('"replace": "src/a.ts"');
+    expect(out).toContain("src/environments/environment.prod.ts");
+    expect(await patchAngularJsonFileReplacements(dir)).toEqual({
+      ok: true,
+      mutated: false,
+    });
+  });
 });

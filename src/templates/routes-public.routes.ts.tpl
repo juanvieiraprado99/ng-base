@@ -4,16 +4,12 @@ export const PUBLIC_ROUTES: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('@layout/public/public.component').then(
-        (c) => c.PublicComponent,
-      ),
+      import('{{IMPORT_LAYOUT_PUBLIC}}').then((c) => c.{{LAYOUT_PUBLIC_CLASS}}),
     children: [
       {
         path: '',
         loadComponent: () =>
-          import('@pages/landing-page/landing-page.component').then(
-            (c) => c.LandingPageComponent,
-          ),
+          import('{{IMPORT_LANDING_PAGE}}').then((c) => c.{{LANDING_PAGE_CLASS}}),
       },
     ],
   },

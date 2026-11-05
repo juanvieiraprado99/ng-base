@@ -1,12 +1,12 @@
 import { Routes } from '@angular/router';
+import { authGuard } from '{{IMPORT_AUTH_GUARD}}';
 
 export const PRIVATE_ROUTES: Routes = [
   {
-    path: '',
+    path: 'app',
+    canMatch: [authGuard],
     loadComponent: () =>
-      import('@layout/private/private.component').then(
-        (c) => c.PrivateComponent,
-      ),
+      import('{{IMPORT_LAYOUT_PRIVATE}}').then((c) => c.{{LAYOUT_PRIVATE_CLASS}}),
     children: [],
   },
 ];

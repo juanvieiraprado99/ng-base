@@ -1,9 +1,7 @@
 import path from "node:path";
 import fse from "fs-extra";
-import { parseJsonWithComments } from "./parse-jsonc.js";
-
-const ENV_REPLACE = "src/environments/environment.ts";
-const ENV_WITH = "src/environments/environment.prod.ts";
+import { parseJsonWithComments, setJsonValue } from "./parse-jsonc.js";
+import { DEFAULT_WORKSPACE, type Workspace } from "./workspace.js";
 
 function normalizeConfigPath(p: string): string {
   return p.replace(/\\/g, "/");
@@ -26,15 +24,20 @@ function fileReplacementEntryExists(
   );
 }
 
+/** The build target and the key it lives under (`architect` or `targets`). */
 function getBuildSection(
   project: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const architect = project.architect as Record<string, unknown> | undefined;
-  const targets = project.targets as Record<string, unknown> | undefined;
-  const build =
-    (architect?.build as Record<string, unknown> | undefined) ??
-    (targets?.build as Record<string, unknown> | undefined);
-  return build && typeof build === "object" ? build : undefined;
+):
+  | { key: "architect" | "targets"; build: Record<string, unknown> }
+  | undefined {
+  for (const key of ["architect", "targets"] as const) {
+    const section = project[key] as Record<string, unknown> | undefined;
+    const build = section?.build;
+    if (build && typeof build === "object") {
+      return { key, build: build as Record<string, unknown> };
+    }
+  }
+  return undefined;
 }
 
 function resolveApplicationProjectKey(
@@ -67,7 +70,10 @@ export type PatchAngularJsonResult =
 /** Idempotent patch: ensure production build replaces environment.ts with environment.prod.ts. */
 export async function patchAngularJsonFileReplacements(
   cwd: string,
+  ws: Workspace = DEFAULT_WORKSPACE,
 ): Promise<PatchAngularJsonResult> {
+  const ENV_REPLACE = `${ws.sourceRoot}/environments/environment.ts`;
+  const ENV_WITH = `${ws.sourceRoot}/environments/environment.prod.ts`;
   const angularJsonPath = path.join(cwd, "angular.json");
   if (!(await fse.pathExists(angularJsonPath))) {
     return { ok: false };
@@ -81,7 +87,7 @@ export async function patchAngularJsonFileReplacements(
     return { ok: false };
   }
 
-  const projectKey = resolveApplicationProjectKey(root);
+  const projectKey = ws.projectName ?? resolveApplicationProjectKey(root);
   if (!projectKey) return { ok: false };
 
   const project = root.projects as Record<string, unknown> | undefined;
@@ -91,49 +97,33 @@ export async function patchAngularJsonFileReplacements(
       : undefined;
   if (!proj) return { ok: false };
 
-  const build = getBuildSection(proj);
-  if (!build) return { ok: false };
+  const section = getBuildSection(proj);
+  if (!section) return { ok: false };
 
-  let mutated = false;
-
-  if (!build.configurations || typeof build.configurations !== "object") {
-    build.configurations = {};
-  }
-
-  const configurations = build.configurations as Record<
-    string,
-    Record<string, unknown>
-  >;
-
-  const production = configurations.production;
-  if (!production || typeof production !== "object") {
-    configurations.production = {
-      fileReplacements: [{ replace: ENV_REPLACE, with: ENV_WITH }],
-    };
-    mutated = true;
-  } else if (!production.fileReplacements) {
-    production.fileReplacements = [{ replace: ENV_REPLACE, with: ENV_WITH }];
-    mutated = true;
-  } else {
-    if (!Array.isArray(production.fileReplacements)) {
-      production.fileReplacements = [];
-      mutated = true;
-    }
-    const fr = production.fileReplacements as Array<{
-      replace: string;
-      with: string;
-    }>;
-    if (!fileReplacementEntryExists(fr, ENV_REPLACE, ENV_WITH)) {
-      fr.push({ replace: ENV_REPLACE, with: ENV_WITH });
-      mutated = true;
-    }
-  }
-
-  if (!mutated) {
+  const configurations = section.build.configurations as
+    | Record<string, Record<string, unknown> | undefined>
+    | undefined;
+  const current = configurations?.production?.fileReplacements;
+  const list = Array.isArray(current) ? [...current] : [];
+  if (fileReplacementEntryExists(list, ENV_REPLACE, ENV_WITH)) {
     return { ok: true, mutated: false };
   }
+  list.push({ replace: ENV_REPLACE, with: ENV_WITH });
 
-  const newContent = `${JSON.stringify(root, null, 2)}\n`;
+  // Edit only this array: comments and formatting elsewhere are preserved.
+  const newContent = setJsonValue(
+    raw,
+    [
+      "projects",
+      projectKey,
+      section.key,
+      "build",
+      "configurations",
+      "production",
+      "fileReplacements",
+    ],
+    list,
+  );
   await fse.writeFile(angularJsonPath, newContent, "utf8");
   return { ok: true, mutated: true };
 }

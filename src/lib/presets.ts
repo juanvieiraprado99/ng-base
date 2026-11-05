@@ -23,8 +23,8 @@ export const PRESETS: Record<PresetName, NgxBaseCliConfig> = {
 };
 
 export const PRESET_DESCRIPTIONS: Record<PresetName, string> = {
-  minimal: "cache + base service only, localStorage, no interceptors",
+  minimal: "api client + cache (localStorage), no auth/error interceptors",
   standard:
-    "cache + base service + auth interceptor + error interceptor + barrel",
+    "minimal + auth interceptor (allowlist) + error interceptor + barrel",
   full: "standard + base folder structure (layout, pages, routes, shared)",
 };

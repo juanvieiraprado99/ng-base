@@ -4,7 +4,10 @@ import fse from "fs-extra";
 import pc from "picocolors";
 import type { NgxBaseCliConfig } from "../lib/config.js";
 import { readNgxBaseConfig } from "../lib/config.js";
+import { interceptorBindings } from "../lib/generate-plan.js";
+import { coreFiles } from "../lib/naming-style.js";
 import { parseJsonWithComments } from "../lib/parse-jsonc.js";
+import { resolveWorkspace, type Workspace } from "../lib/workspace.js";
 
 type Level = "ok" | "warn" | "error";
 
@@ -33,11 +36,12 @@ export async function runDoctor(cwd: string = process.cwd()): Promise<void> {
   }
 
   const checks: Check[] = [];
+  const ws = await resolveWorkspace(cwd, config.project);
 
   await checkBaseFiles(checks, cwd, config);
-  await checkEnvironments(checks, cwd);
+  await checkEnvironments(checks, cwd, ws);
   await checkAliases(checks, cwd, config);
-  await checkAppConfig(checks, cwd, config);
+  await checkAppConfig(checks, cwd, config, ws);
   await checkAuthToken(checks, cwd, config);
 
   const maxLen = Math.max(...checks.map((c) => c.label.length));
@@ -70,12 +74,17 @@ async function checkBaseFiles(
   config: NgxBaseCliConfig,
 ): Promise<void> {
   const base = path.join(cwd, config.outputDir);
-  const files: [string, string][] = [
-    ["interfaces/cache.interface.ts", "cache.interface.ts"],
-    ["services/cache.service.ts", "cache.service.ts"],
-    ["services/base.service.ts", "base.service.ts"],
+  const f = coreFiles(config.naming);
+  const files = [
+    f.cacheInterface,
+    f.cacheService,
+    f.cacheStorage,
+    f.apiClient,
+    f.cacheInterceptor,
+    f.apiTokens,
   ];
-  for (const [rel, label] of files) {
+  for (const rel of files) {
+    const label = rel;
     const exists = await fse.pathExists(path.join(base, rel));
     checks.push({
       level: exists ? "ok" : "error",
@@ -87,10 +96,14 @@ async function checkBaseFiles(
   }
 }
 
-async function checkEnvironments(checks: Check[], cwd: string): Promise<void> {
+async function checkEnvironments(
+  checks: Check[],
+  cwd: string,
+  ws: Workspace,
+): Promise<void> {
   for (const file of ["environment.ts", "environment.prod.ts"]) {
     const exists = await fse.pathExists(
-      path.join(cwd, "src/environments", file),
+      path.join(cwd, ws.sourceRoot, "environments", file),
     );
     checks.push({
       level: exists ? "ok" : "warn",
@@ -164,13 +177,14 @@ async function checkAppConfig(
   checks: Check[],
   cwd: string,
   config: NgxBaseCliConfig,
+  ws: Workspace,
 ): Promise<void> {
-  const appConfigPath = path.join(cwd, "src/app/app.config.ts");
+  const appConfigPath = path.join(cwd, ws.appDir, "app.config.ts");
   if (!(await fse.pathExists(appConfigPath))) {
     checks.push({
       level: "warn",
       label: "app.config.ts providers",
-      detail: "src/app/app.config.ts not found — configure providers manually.",
+      detail: `${ws.appDir}/app.config.ts not found — configure providers manually.`,
     });
     return;
   }
@@ -193,18 +207,14 @@ async function checkAppConfig(
       : "Provide BASE_API_URL with environment.baseApiUrl.",
   });
 
-  const wantsInterceptors =
-    config.generateAuthInterceptor ||
-    config.generateErrorInterceptor ||
-    config.generateLoggingInterceptor;
-  if (wantsInterceptors) {
-    const has = content.includes("withInterceptors");
+  for (const { name } of interceptorBindings(config)) {
+    const has = content.includes(name);
     checks.push({
-      level: has ? "ok" : "warn",
-      label: "withInterceptors(...)",
+      level: has ? "ok" : name === "cacheInterceptor" ? "error" : "warn",
+      label: `${name} registered`,
       detail: has
         ? undefined
-        : "Interceptors generated but not wired via withInterceptors(...).",
+        : `Add ${name} to withInterceptors([...]) in app.config.ts.`,
     });
   }
 }
@@ -214,19 +224,16 @@ async function checkAuthToken(
   cwd: string,
   config: NgxBaseCliConfig,
 ): Promise<void> {
-  if (!config.generateAuthInterceptor) return;
-
-  const appConfigPath = path.join(cwd, "src/app/app.config.ts");
-  let provided = false;
-  if (await fse.pathExists(appConfigPath)) {
-    const content = await fse.readFile(appConfigPath, "utf8");
-    provided = content.includes(config.authTokenName);
+  if (!config.generateAuthInterceptor && !config.generateProjectStructure) {
+    return;
   }
+  const rel = `${config.outputDir}/${coreFiles(config.naming).authStore}`;
+  const exists = await fse.pathExists(path.join(cwd, rel));
   checks.push({
-    level: provided ? "ok" : "warn",
-    label: `${config.authTokenName} provided`,
-    detail: provided
-      ? undefined
-      : `AuthInterceptor needs ${config.authTokenName} provided (import from ${config.authTokenImportPath}).`,
+    level: exists ? "ok" : "error",
+    label: "AuthTokenStore present",
+    detail: exists
+      ? "Call inject(AuthTokenStore).set(token) after login."
+      : `Expected at ${rel}. Run \`ngx-base-cli update\`.`,
   });
 }

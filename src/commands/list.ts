@@ -11,6 +11,7 @@ import {
   type SyncStatus,
 } from "../lib/manifest.js";
 import { renderGenerationTarget } from "../lib/render-target.js";
+import { resolveWorkspace } from "../lib/workspace.js";
 
 interface FileEntry {
   relPath: string;
@@ -43,7 +44,8 @@ export async function runList(cwd: string = process.cwd()): Promise<void> {
     return;
   }
 
-  const targets = buildGenerationTargets(cwd, config);
+  const ws = await resolveWorkspace(cwd, config.project);
+  const targets = buildGenerationTargets(cwd, config, ws);
   const manifest = await readManifest(cwd);
   const entries: FileEntry[] = [];
 
@@ -56,7 +58,7 @@ export async function runList(cwd: string = process.cwd()): Promise<void> {
       continue;
     }
 
-    if (t.dirOnly) {
+    if (t.dirOnly || t.createOnly) {
       entries.push({ relPath, status: "in-sync" });
       continue;
     }

@@ -1,16 +1,17 @@
 {
   "name": "ngx-base-cli",
   "version": "0.1.0-beta.2",
-  "description": "CLI to scaffold BaseService and CacheService in Angular projects (shadcn/ui style)",
+  "description": "CLI to scaffold an HTTP core (ApiClient, response cache, auth/error interceptors) into Angular projects — shadcn/ui style, the code lives in your repo",
   "license": "MIT",
   "author": "",
   "type": "module",
   "bin": "./dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "schema.json"
   ],
   "scripts": {
-    "build": "tsup && node ./scripts/copy-templates.mjs",
+    "build": "tsup && node ./scripts/copy-templates.mjs && npm run schema",
     "prepublishOnly": "npm run build",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
@@ -19,7 +20,9 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "schema": "tsx scripts/build-schema.ts",
+    "e2e": "npm run build && node scripts/e2e.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -29,8 +32,8 @@
     "commander": "^13.1.0",
     "diff": "^9.0.0",
     "fs-extra": "^11.3.0",
+    "jsonc-parser": "^3.3.1",
     "picocolors": "^1.1.1",
-    "strip-json-comments": "^5.0.3",
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {

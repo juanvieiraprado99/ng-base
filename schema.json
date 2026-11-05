@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://unpkg.com/ngx-base-cli/schema.json",
+  "title": "ngx-base-cli config (.ngx-base-cli.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "outputDir": {
+      "type": "string",
+      "description": "Folder (relative to the project root) where the core is generated.",
+      "default": "src/app/core"
+    },
+    "baseApiUrl": {
+      "type": "string",
+      "description": "API base URL written to src/environments/environment*.ts (BASE_API_URL).",
+      "default": "https://api.example.com"
+    },
+    "importStyle": {
+      "type": "string",
+      "description": "alias = @core/@layout/@pages/@shared (tsconfig paths); relative = ../ imports.",
+      "enum": ["alias", "relative"],
+      "default": "alias"
+    },
+    "useHttpResource": {
+      "type": "boolean",
+      "description": "Add ApiClient.resource() for httpResource (Angular 19.2+).",
+      "default": false
+    },
+    "storageEngine": {
+      "type": "string",
+      "description": "CACHE_STORAGE backend for the response cache (SSR-safe).",
+      "enum": ["localStorage", "sessionStorage", "memory"],
+      "default": "localStorage"
+    },
+    "generateAuthInterceptor": {
+      "type": "boolean",
+      "description": "Generate the auth interceptor, AuthTokenStore and AUTH_ALLOWED_URLS.",
+      "default": false
+    },
+    "authTokenName": {
+      "type": "string",
+      "description": "Deprecated and ignored: the auth interceptor reads AuthTokenStore.",
+      "deprecated": true,
+      "default": "AUTH_TOKEN"
+    },
+    "authTokenImportPath": {
+      "type": "string",
+      "description": "Deprecated and ignored: the auth interceptor reads AuthTokenStore.",
+      "deprecated": true,
+      "default": "@core/tokens"
+    },
+    "generateErrorInterceptor": {
+      "type": "boolean",
+      "description": "Generate the error interceptor (HttpErrorBus, LOGIN_ROUTE / FORBIDDEN_ROUTE redirects).",
+      "default": false
+    },
+    "generateLoggingInterceptor": {
+      "type": "boolean",
+      "description": "Generate a dev-only request logging interceptor.",
+      "default": false
+    },
+    "generateBarrel": {
+      "type": "boolean",
+      "description": "Generate services/index.ts re-exporting the core services.",
+      "default": true
+    },
+    "generateProjectStructure": {
+      "type": "boolean",
+      "description": "Generate layout/, pages/, routes/ (with authGuard) and shared/, and merge app.routes.ts.",
+      "default": false
+    },
+    "naming": {
+      "type": "string",
+      "description": "File/class naming: \"modern\" (user-card.ts, Angular v20 style guide) or \"suffixed\" (user-card.component.ts). Missing = \"suffixed\".",
+      "enum": ["modern", "suffixed"],
+      "default": "suffixed"
+    },
+    "project": {
+      "type": "string",
+      "description": "angular.json project to target; empty = auto-detect.",
+      "default": ""
+    }
+  },
+  "additionalProperties": false
+}

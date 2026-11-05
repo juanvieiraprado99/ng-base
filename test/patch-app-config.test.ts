@@ -53,7 +53,7 @@ export const appConfig: ApplicationConfig = {
     expect(res.patched).toBe(true);
     const out = await read(p);
     expect(out).toMatch(
-      /provideHttpClient\(\s*withInterceptors\(\[authInterceptor\]\)\s*\)/,
+      /provideHttpClient\(\s*withInterceptors\(\[authInterceptor, cacheInterceptor\]\)\s*\)/,
     );
     expect(out).toContain("authInterceptor");
     expect(out).toContain("environment.baseApiUrl");
@@ -107,7 +107,7 @@ export const appConfig: ApplicationConfig = {
     expect(res.patched).toBe(true);
     const out = await read(p);
     expect(out).toContain(
-      "provideHttpClient(withInterceptors([authInterceptor]))",
+      "provideHttpClient(withInterceptors([authInterceptor, cacheInterceptor]))",
     );
   });
 
@@ -132,6 +132,53 @@ export const appConfig: ApplicationConfig = {
     const out = await read(p);
     expect(out).toContain("// routing");
     expect(out).toContain("provideRouter(routes)");
-    expect(out).toMatch(/withInterceptors\(\[authInterceptor\]\)/);
+    expect(out).toMatch(
+      /withInterceptors\(\[authInterceptor, cacheInterceptor\]\)/,
+    );
+  });
+
+  it("always wires provideHttpClient + the cache interceptor (minimal config)", async () => {
+    const p = await writeAppConfig(
+      `import { ApplicationConfig } from '@angular/core';
+
+export const appConfig: ApplicationConfig = {
+  providers: [],
+};
+`,
+    );
+    const res = await patchAppConfigForHttp(dir, DEFAULT_NGX_BASE_CONFIG);
+    expect(res.patched).toBe(true);
+    const out = await read(p);
+    expect(out).toContain(
+      "provideHttpClient(withInterceptors([cacheInterceptor]))",
+    );
+    expect(out).toContain(
+      "import { cacheInterceptor } from './core/interceptors/cache.interceptor'",
+    );
+  });
+
+  it("moves a legacy BASE_API_URL import from cache.service to tokens/api.tokens", async () => {
+    const p = await writeAppConfig(
+      `import { ApplicationConfig } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { BASE_API_URL } from './core/services/cache.service';
+import { environment } from '../environments/environment';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideHttpClient(),
+    { provide: BASE_API_URL, useValue: environment.baseApiUrl },
+  ],
+};
+`,
+    );
+    await patchAppConfigForHttp(dir, DEFAULT_NGX_BASE_CONFIG);
+    const out = await read(p);
+    expect(out).not.toContain("./core/services/cache.service");
+    expect(out).toContain(
+      "import { BASE_API_URL } from './core/tokens/api.tokens'",
+    );
+    expect(out.match(/BASE_API_URL,? /g)?.length).toBeGreaterThan(0);
+    expect(out.match(/import \{ BASE_API_URL/g)).toHaveLength(1);
   });
 });
