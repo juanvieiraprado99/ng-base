@@ -6,7 +6,6 @@ import { RichText } from '@shared/rich-text/rich-text';
 @Component({
   selector: 'app-start-page',
   templateUrl: './start-page.html',
-  styleUrl: './start-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CodeBlock, RichText],
 })

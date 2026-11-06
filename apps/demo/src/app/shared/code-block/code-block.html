@@ -1,12 +1,34 @@
-<figure>
-  @if (label(); as name) {
-    <figcaption>{{ name }}</figcaption>
-  }
-  <pre tabindex="0"><code>{{ code() }}</code></pre>
-  <button type="button" class="copy" (click)="copy()">
-    {{ copied() ? t().ui.copied : t().ui.copy }}
-  </button>
-  <span class="visually-hidden" aria-live="polite">
-    {{ copied() ? t().ui.copied : '' }}
-  </span>
-</figure>
+<ng-template #snippet let-text let-name="name">
+  <figure class="not-prose relative my-4 overflow-hidden rounded-lg border bg-muted/40">
+    @if (name) {
+      <figcaption class="text-muted-foreground border-b px-4 py-2 font-mono text-xs">{{ name }}</figcaption>
+    }
+    <pre class="overflow-x-auto p-4 pr-24 text-sm leading-6" tabindex="0"><code>{{ text }}</code></pre>
+    <button
+      type="button"
+      z-button
+      zType="outline"
+      zSize="sm"
+      class="absolute right-2 bottom-2"
+      [class.top-2]="!name"
+      [class.bottom-auto]="!name"
+      (click)="copy(text)"
+    >
+      <ng-icon [name]="copied() ? 'lucideCheck' : 'lucideCopy'" aria-hidden="true" />
+      {{ copied() ? t().ui.copied : t().ui.copy }}
+    </button>
+  </figure>
+</ng-template>
+
+@if (variants(); as tabs) {
+  <z-tab-group>
+    @for (tab of tabs; track tab.label) {
+      <z-tab [label]="tab.label">
+        <ng-container *ngTemplateOutlet="snippet; context: { $implicit: tab.code, name: label() }" />
+      </z-tab>
+    }
+  </z-tab-group>
+} @else {
+  <ng-container *ngTemplateOutlet="snippet; context: { $implicit: code(), name: label() }" />
+}
+<span class="sr-only" aria-live="polite">{{ copied() ? t().ui.copied : '' }}</span>

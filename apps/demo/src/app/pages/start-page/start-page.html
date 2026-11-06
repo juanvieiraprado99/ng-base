@@ -8,10 +8,10 @@
   }
 </ul>
 
-<ol class="steps">
-  @for (step of t().start.steps; track step.code) {
-    <li>
-      <h2>{{ step.title }}</h2>
+<ol class="m-0 list-none p-0">
+  @for (step of t().start.steps; track step.code; let i = $index) {
+    <li class="mt-0">
+      <h2>{{ i + 1 }}. {{ step.title }}</h2>
       <p [innerHTML]="step.body | rich"></p>
       <app-code-block [code]="step.code" />
     </li>

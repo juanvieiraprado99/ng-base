@@ -14,6 +14,7 @@ import { cacheInterceptor } from './core/interceptors/cache-interceptor';
 import { errorInterceptor } from './core/interceptors/error-interceptor';
 import { BASE_API_URL } from './core/tokens/api-tokens';
 import { routes } from './app.routes';
+import { provideZard } from '@/shared/core/provider/providezard';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -29,5 +30,6 @@ export const appConfig: ApplicationConfig = {
     provideClientHydration(),
     provideHttpClient(withInterceptors([errorInterceptor, cacheInterceptor])),
     { provide: BASE_API_URL, useValue: environment.baseApiUrl },
+    provideZard(),
   ],
 };

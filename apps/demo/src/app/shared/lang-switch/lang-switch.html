@@ -1,6 +1,10 @@
-<nav [attr.aria-label]="language.t().ui.language">
+<nav class="flex items-center gap-1" [attr.aria-label]="language.t().ui.language">
   @for (lang of langs; track lang) {
     <a
+      z-button
+      zSize="sm"
+      [zType]="language.lang() === lang ? 'secondary' : 'ghost'"
+      class="uppercase"
       [routerLink]="language.hrefIn(lang)"
       [attr.lang]="lang"
       [attr.hreflang]="lang"

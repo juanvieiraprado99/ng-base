@@ -2,13 +2,14 @@
   display: block;
 }
 
+/* The terminal is dark in both themes, like a real one. */
 .terminal {
-  background: var(--code-bg);
-  color: var(--code-ink);
+  background: #0b0f19;
+  color: #e5e9f2;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.25rem 1.25rem 1.5rem;
-  font: 400 0.875rem/1.7 var(--font-mono);
-  box-shadow: 0 0 0 1px var(--rule);
+  font: 400 0.875rem/1.7 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
 p {
@@ -23,7 +24,7 @@ p {
 }
 
 .prompt {
-  color: var(--code-dim);
+  color: #8a94a8;
 }
 
 .typed {
@@ -48,11 +49,11 @@ p {
 }
 
 .create {
-  color: var(--code-marker);
+  color: #6ee7a8;
 }
 
 .patch {
-  color: var(--code-cobalt);
+  color: #93b4ff;
 }
 
 .path {
@@ -61,7 +62,7 @@ p {
 
 .done {
   margin-top: 0.75rem;
-  color: var(--code-dim);
+  color: #8a94a8;
 }
 
 /* On narrow screens the command wraps instead of being typed out. */
@@ -75,6 +76,13 @@ p {
 
   .terminal {
     font-size: 0.8125rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typed,
+  .line {
+    animation: none;
   }
 }
 

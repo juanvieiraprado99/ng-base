@@ -9,22 +9,15 @@ export class Theme {
 
   constructor() {
     if (!isPlatformBrowser(inject(PLATFORM_ID))) return;
-    const saved = this.document.documentElement.dataset['theme'];
-    this.dark.set(
-      saved
-        ? saved === 'dark'
-        : (globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ??
-            false),
-    );
+    this.dark.set(this.document.documentElement.classList.contains('dark'));
   }
 
   toggle(): void {
     const next = !this.dark();
     this.dark.set(next);
-    const value = next ? 'dark' : 'light';
-    this.document.documentElement.dataset['theme'] = value;
+    this.document.documentElement.classList.toggle('dark', next);
     try {
-      localStorage.setItem('theme', value);
+      localStorage.setItem('theme', next ? 'dark' : 'light');
     } catch {
       // Storage can be blocked; the choice then lasts for this visit only.
     }

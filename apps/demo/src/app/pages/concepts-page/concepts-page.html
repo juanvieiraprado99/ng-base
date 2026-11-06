@@ -11,23 +11,23 @@
       <app-code-block [code]="code" />
     }
     @if (section.table; as table) {
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
+      <div class="my-4 overflow-x-auto rounded-lg border">
+        <table z-table>
+          <thead z-table-header>
+            <tr z-table-row>
               @for (cell of table.head; track $index) {
-                <th scope="col">{{ cell }}</th>
+                <th z-table-head scope="col">{{ cell }}</th>
               }
             </tr>
           </thead>
-          <tbody>
+          <tbody z-table-body>
             @for (row of table.rows; track row[0]) {
-              <tr>
+              <tr z-table-row>
                 @for (cell of row; track $index) {
                   @if ($first) {
-                    <th scope="row">{{ cell }}</th>
+                    <th z-table-head scope="row">{{ cell }}</th>
                   } @else {
-                    <td><code>{{ cell }}</code></td>
+                    <td z-table-cell class="whitespace-normal"><code>{{ cell }}</code></td>
                   }
                 }
               </tr>

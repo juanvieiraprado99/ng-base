@@ -11,19 +11,19 @@
 
 <h2>{{ t().commands.flagsTitle }}</h2>
 <p [innerHTML]="t().commands.flagsLead | rich"></p>
-<div class="table-scroll">
-  <table>
-    <thead>
-      <tr>
-        <th scope="col">{{ t().commands.flagHead }}</th>
-        <th scope="col">{{ t().commands.flagDescriptionHead }}</th>
+<div class="my-4 overflow-x-auto rounded-lg border">
+  <table z-table>
+    <thead z-table-header>
+      <tr z-table-row>
+        <th z-table-head scope="col">{{ t().commands.flagHead }}</th>
+        <th z-table-head scope="col">{{ t().commands.flagDescriptionHead }}</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody z-table-body>
       @for (flag of flags; track flag) {
-        <tr>
-          <th scope="row"><code>{{ flag }}</code></th>
-          <td [innerHTML]="t().commands.flags[flag] | rich"></td>
+        <tr z-table-row>
+          <th z-table-head scope="row"><code>{{ flag }}</code></th>
+          <td z-table-cell class="whitespace-normal" [innerHTML]="t().commands.flags[flag] | rich"></td>
         </tr>
       }
     </tbody>

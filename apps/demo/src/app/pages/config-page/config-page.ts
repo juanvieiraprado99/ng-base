@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import schema from 'ngx-base-cli/schema.json';
 import { Language, usePageTitle } from '@i18n/language';
+import { ZardTableImports } from '@/shared/components/table';
 import { RichText } from '@shared/rich-text/rich-text';
 
 interface SchemaProperty {
@@ -27,7 +28,7 @@ function describe(name: string, property: SchemaProperty) {
   selector: 'app-config-page',
   templateUrl: './config-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RichText],
+  imports: [RichText, ZardTableImports],
 })
 export class ConfigPage {
   protected readonly t = inject(Language).t;

@@ -1,71 +1,46 @@
 # ngx-base-cli docs: design system (master)
 
-Produced with `ui-ux-pro-max` (`--design-system`), then revised against the
-`frontend-design` checklist. The raw recommendation (near-black background,
-acid-green accent, JetBrains Mono + IBM Plex Sans, Swiss minimalism) is the
-generic "developer tool" look, so it was **not** used as is.
+The docs site is built with **Zard UI** (zardui.com), default `neutral` theme.
+Zard components are copied into `apps/demo/src/app/shared/components/` with
+`zard-cli add <name>`: the same "the code is yours" model as ngx-base-cli itself,
+so the site doubles as a second example of that workflow.
 
-## Idea
+An earlier version used a hand-made theme (cobalt/pink tokens, Schibsted Grotesk,
+Geist Mono). It was replaced on purpose by the Zard default look.
 
-The docs are a project folder. ngx-base-cli copies files into your app, so the
-interface encodes the one thing readers need to know about every file:
+## Stack
 
-| State | Meaning | Marker |
-|-------|---------|--------|
-| created | written by ngx-base-cli, now yours | marker pink + the word "created" |
-| patched | an existing file the CLI edited in place | cobalt + the word "patched" |
-| yours | already in your app, untouched | muted + the word "yours" |
+- Tailwind CSS 4 (`@tailwindcss/postcss`), `tailwindcss-animate`, Angular CDK,
+  class-variance-authority, `@ng-icons/lucide`.
+- Theme tokens (`--background`, `--primary`, `--muted`, ...) live in `src/styles.css`.
+  Dark mode is the `dark` class on `<html>`, set before first paint by the
+  script in `index.html` and toggled by the `Theme` service.
+- `components.json` configures `zard-cli`; aliases `@/shared/...` point to `src/app/shared`.
 
-State is never carried by colour alone (WCAG 1.4.1): each marker has a label.
+## Components in use
 
-The memorable element is the **terminal at the top of the home page**: it types
-`npx ngx-base-cli init` and the generated files appear line by line. Everything
-else stays quiet.
+button, badge, card, tabs, tooltip, sheet, table, empty, sonner. Also installed
+and available: accordion, alert, kbd, separator, skeleton, toggle, toggle-group.
 
-## Tokens
+| Where | Component |
+|-------|-----------|
+| Header, language switch, theme toggle, CTAs | `button` |
+| Mobile docs menu | `sheet` |
+| Latest-version label | `badge` + `tooltip` |
+| "What you get" cards | `card` |
+| Package-manager variants of a command | `tabs` |
+| File list state (created / patched / yours) | `badge` (always with the word) |
+| Commands, flags and config reference | `table` |
+| Copy feedback | `sonner` toast + live region |
+| 404 page | `empty` |
 
-| Token | Light | Dark | Use |
-|-------|-------|------|-----|
-| `--paper` | `#F3F5F8` | `#0D1220` | page background |
-| `--panel` | `#E9EDF3` | `#151C30` | rail, inline code |
-| `--ink` | `#141B2D` | `#E7ECF5` | text |
-| `--steel` | `#556075` | `#9AA6BD` | secondary text |
-| `--rule` | `#D3D9E3` | `#263050` | borders |
-| `--cobalt` | `#2540C8` | `#93A8FF` | links, focus, "patched" |
-| `--marker` | `#B5124F` | `#FF86B7` | "created" |
-| `--code-bg` | `#101729` | `#070B16` | code and terminal (dark in both themes) |
+## What stayed from the first design
 
-Text on `--paper` meets 4.5:1 in both themes.
-
-## Type
-
-- Text and headings: **Schibsted Grotesk** (400, 500, 700).
-- Code, paths, flags: **Geist Mono** (400, 500).
-- Body 17px / 1.65, prose width 66ch, left aligned. Headings tight (-0.02em).
-- No all-caps labels, no eyebrows, no numbered markers (nothing here is a sequence except "Get started").
-
-## Layout
-
-```
-┌──────────────────────────────────────────────────────────┐
-│ ngx-base-cli  v0.2.0        [EN|PT] [theme] [GitHub]     │
-├───────────────┬──────────────────────────────────────────┤
-│ folder-shaped │  page title                              │
-│ nav (rail)    │  prose (66ch)                            │
-│  modules/     │  code / file list (full width of column) │
-│   core        │                                          │
-└───────────────┴──────────────────────────────────────────┘
-```
-
-Under 56rem the rail collapses behind a "Menu" button.
-
-## Motion
-
-One orchestrated moment (the terminal). Everything else only responds to input
-(hover, focus, copy confirmation). `prefers-reduced-motion` shows the final
-terminal state immediately.
+- The home page terminal (CSS-only, dark in both themes, reduced motion shows the final state).
+- File states carry a text label, never colour alone.
+- Reading column about 48rem, left aligned (`.docs` rules in `styles.css`).
 
 ## Quality floor
 
-Contrast 4.5:1, visible focus (2px cobalt outline), 44px touch targets on
-controls, keyboard reachable, responsive from 360px, light and dark themes.
+Contrast 4.5:1 (Zard tokens), visible focus, keyboard reachable, responsive from 360px,
+light and dark themes.

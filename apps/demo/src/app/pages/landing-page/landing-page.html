@@ -1,9 +1,9 @@
-<section class="hero">
-  <h1>{{ t().home.title }}</h1>
-  <p class="lead">{{ t().home.lead }}</p>
-  <div class="actions">
-    <a class="button" [routerLink]="['/', language.lang(), 'start']">{{ t().home.ctaStart }}</a>
-    <a class="button quiet" [href]="githubUrl">{{ t().home.ctaGithub }}</a>
+<section class="py-4 sm:py-8">
+  <h1 class="max-w-2xl text-4xl! font-bold tracking-tight sm:text-5xl!">{{ t().home.title }}</h1>
+  <p class="lead max-w-2xl">{{ t().home.lead }}</p>
+  <div class="mt-6 flex flex-wrap gap-3">
+    <a z-button zSize="lg" [routerLink]="['/', language.lang(), 'start']">{{ t().home.ctaStart }}</a>
+    <a z-button zSize="lg" zType="outline" [href]="githubUrl">{{ t().home.ctaGithub }}</a>
   </div>
 </section>
 
@@ -11,12 +11,16 @@
 
 <section>
   <h2>{{ t().home.whyTitle }}</h2>
-  <div class="why">
+  <div class="grid gap-4 sm:grid-cols-2">
     @for (item of t().home.why; track item.title) {
-      <div>
-        <h3>{{ item.title }}</h3>
-        <p [innerHTML]="item.body | rich"></p>
-      </div>
+      <z-card>
+        <z-card-header>
+          <z-card-title>{{ item.title }}</z-card-title>
+        </z-card-header>
+        <z-card-content>
+          <p class="m-0" [innerHTML]="item.body | rich"></p>
+        </z-card-content>
+      </z-card>
     }
   </div>
 </section>
@@ -25,10 +29,10 @@
   <h2>{{ t().home.filesTitle }}</h2>
   <p [innerHTML]="t().home.filesLead | rich"></p>
   <app-file-list [files]="coreFiles" />
-  <p class="legend">{{ t().home.legend }}</p>
+  <p class="text-muted-foreground text-sm">{{ t().home.legend }}</p>
 </section>
 
-<section class="built-with">
+<section>
   <h2>{{ t().home.builtWithTitle }}</h2>
   <p [innerHTML]="t().home.builtWith | rich"></p>
   <p><a [href]="sourceUrl">{{ t().home.builtWithLink }}</a></p>
