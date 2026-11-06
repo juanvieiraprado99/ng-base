@@ -26,13 +26,28 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm --filter ngx-base-cli typecheck
+      - run: pnpm --filter ngx-base-cli test
       - run: pnpm build:cli
       - name: schema.json is up to date
         run: git diff --exit-code packages/cli/schema.json
-      - name: docs site builds and its tests pass
-        run: pnpm --filter demo test && pnpm --filter demo build
+
+  # The docs site needs the Node version Angular 22 requires, so it is not part of the node 20 matrix.
+  docs:
+    name: docs site (node 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - run: pnpm --filter demo typecheck
+      - run: pnpm --filter demo test
+      - run: pnpm --filter demo build
 
   e2e:
     name: e2e (${{ matrix.scenario }})
