@@ -1,0 +1,23 @@
+<h1>{{ t().start.title }}</h1>
+<p class="lead">{{ t().start.lead }}</p>
+
+<h2>{{ t().start.prerequisitesTitle }}</h2>
+<ul>
+  @for (item of t().start.prerequisites; track item) {
+    <li [innerHTML]="item | rich"></li>
+  }
+</ul>
+
+<ol class="steps">
+  @for (step of t().start.steps; track step.code) {
+    <li>
+      <h2>{{ step.title }}</h2>
+      <p [innerHTML]="step.body | rich"></p>
+      <app-code-block [code]="step.code" />
+    </li>
+  }
+</ol>
+
+<h2>{{ t().start.ciTitle }}</h2>
+<p [innerHTML]="t().start.ciBody | rich"></p>
+<app-code-block [code]="t().start.ciCode" />

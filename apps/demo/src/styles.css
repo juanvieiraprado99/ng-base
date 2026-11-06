@@ -1,0 +1,224 @@
+/* Tokens: see design-system/ngx-base-cli/MASTER.md */
+:root {
+  --paper: #f3f5f8;
+  --panel: #e9edf3;
+  --ink: #141b2d;
+  --steel: #556075;
+  --rule: #d3d9e3;
+  --cobalt: #2540c8;
+  --marker: #b5124f;
+  --marker-tint: #f8dce8;
+  --code-bg: #101729;
+  --code-ink: #e6ebf5;
+  --code-dim: #94a0ba;
+  --code-marker: #ff8fbd;
+  --code-cobalt: #9db2ff;
+  --font-text: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --radius: 6px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d1220;
+    --panel: #151c30;
+    --ink: #e7ecf5;
+    --steel: #9aa6bd;
+    --rule: #263050;
+    --cobalt: #93a8ff;
+    --marker: #ff86b7;
+    --marker-tint: #2a1623;
+    --code-bg: #070b16;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #0d1220;
+  --panel: #151c30;
+  --ink: #e7ecf5;
+  --steel: #9aa6bd;
+  --rule: #263050;
+  --cobalt: #93a8ff;
+  --marker: #ff86b7;
+  --marker-tint: #2a1623;
+  --code-bg: #070b16;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-text);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin-top: 3rem;
+}
+
+h3 {
+  font-size: 1.125rem;
+  margin-top: 2rem;
+}
+
+p,
+ul,
+ol {
+  margin: 1rem 0 0;
+  max-width: 66ch;
+}
+
+.lead {
+  font-size: 1.25rem;
+  line-height: 1.55;
+  color: var(--steel);
+  max-width: 60ch;
+  margin-top: 1rem;
+}
+
+a {
+  color: var(--cobalt);
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  overflow-wrap: anywhere;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 1rem;
+  font-size: 0.975rem;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.6rem 0.75rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  font-weight: 500;
+  color: var(--steel);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* Buttons and links styled as buttons */
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 1rem var(--font-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.button:hover {
+  background: transparent;
+  color: var(--ink);
+}
+
+.button.quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+.button.quiet:hover {
+  border-color: var(--ink);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Page components are siblings of <router-outlet> inside <main>. */
+main > :not(router-outlet) {
+  display: block;
+  max-width: 54rem;
+}
+
+main h1 .name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.95em;
+}

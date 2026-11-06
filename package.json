@@ -1,59 +1,24 @@
 {
-  "name": "ngx-base-cli",
-  "version": "0.2.0-alpha.0",
-  "description": "Copy an HTTP core (ApiClient, response cache, interceptors) and opt-in modules (auth, errors, logging, layout) into Angular apps — shadcn/ui style: the code is yours",
-  "license": "MIT",
-  "author": "",
+  "name": "ng-base-workspace",
+  "private": true,
   "type": "module",
-  "bin": {
-    "ngx-base-cli": "dist/index.js"
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=20"
   },
-  "files": [
-    "dist",
-    "schema.json"
-  ],
   "scripts": {
-    "build": "tsup && node ./scripts/copy-templates.mjs && npm run schema",
-    "prepublishOnly": "npm run build",
-    "dev": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm -r build",
+    "build:cli": "pnpm --filter ngx-base-cli build",
+    "dev": "pnpm --filter ngx-base-cli dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "schema": "tsx scripts/build-schema.ts",
-    "e2e": "npm run build && node scripts/e2e.mjs"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {
-    "@clack/prompts": "^0.10.0",
-    "commander": "^13.1.0",
-    "fs-extra": "^11.3.0",
-    "jsonc-parser": "^3.3.1",
-    "picocolors": "^1.1.1",
-    "ts-morph": "^28.0.0"
+    "e2e": "pnpm --filter ngx-base-cli e2e"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.15",
-    "@types/fs-extra": "^11.0.4",
-    "@types/node": "^22.14.0",
-    "tsup": "^8.4.0",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.3",
-    "vitest": "^4.1.7"
-  },
-  "keywords": [
-    "angular",
-    "cli",
-    "http",
-    "cache",
-    "interceptor",
-    "scaffold",
-    "shadcn",
-    "copy-paste"
-  ]
+    "@biomejs/biome": "2.4.15"
+  }
 }

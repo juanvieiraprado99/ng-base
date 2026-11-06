@@ -19,17 +19,20 @@ jobs:
         node: [20, 22]
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm run check
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:cli
       - name: schema.json is up to date
-        run: git diff --exit-code schema.json
+        run: git diff --exit-code packages/cli/schema.json
+      - name: docs site builds and its tests pass
+        run: pnpm --filter demo test && pnpm --filter demo build
 
   e2e:
     name: e2e (${{ matrix.scenario }})
@@ -41,10 +44,11 @@ jobs:
         scenario: [modern, suffixed-relative-ssr]
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: node scripts/e2e.mjs ${{ matrix.scenario }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:cli
+      - run: node packages/cli/scripts/e2e.mjs ${{ matrix.scenario }}

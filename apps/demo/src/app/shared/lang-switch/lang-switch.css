@@ -1,0 +1,25 @@
+nav {
+  display: flex;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+a {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 42px;
+  color: var(--steel);
+  text-decoration: none;
+  font: 500 0.9375rem var(--font-mono);
+}
+
+a:hover {
+  color: var(--ink);
+}
+
+a[aria-current="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}

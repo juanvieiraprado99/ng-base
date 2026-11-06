@@ -1,0 +1,91 @@
+:host {
+  display: block;
+}
+
+.terminal {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.25rem 1.5rem;
+  font: 400 0.875rem/1.7 var(--font-mono);
+  box-shadow: 0 0 0 1px var(--rule);
+}
+
+p {
+  margin: 0;
+  max-width: none;
+}
+
+.command {
+  display: flex;
+  gap: 0.6ch;
+  margin-bottom: 0.5rem;
+}
+
+.prompt {
+  color: var(--code-dim);
+}
+
+.typed {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  width: calc(var(--len) * 1ch);
+  max-width: 100%;
+  animation: type 1.5s steps(var(--len)) both;
+}
+
+.line {
+  display: flex;
+  gap: 1.5ch;
+  animation: appear 0.01s both;
+  animation-delay: calc(1.7s + var(--i) * 0.26s);
+}
+
+.verb {
+  flex: none;
+  width: 6ch;
+}
+
+.create {
+  color: var(--code-marker);
+}
+
+.patch {
+  color: var(--code-cobalt);
+}
+
+.path {
+  overflow-wrap: anywhere;
+}
+
+.done {
+  margin-top: 0.75rem;
+  color: var(--code-dim);
+}
+
+/* On narrow screens the command wraps instead of being typed out. */
+@media (max-width: 40rem) {
+  .typed {
+    white-space: normal;
+    width: auto;
+    overflow-wrap: anywhere;
+    animation: none;
+  }
+
+  .terminal {
+    font-size: 0.8125rem;
+  }
+}
+
+@keyframes type {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}

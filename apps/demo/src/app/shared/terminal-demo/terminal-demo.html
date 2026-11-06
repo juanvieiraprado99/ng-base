@@ -1,0 +1,17 @@
+<div class="terminal" role="img" [attr.aria-label]="t().home.terminalLabel">
+  <div class="screen" aria-hidden="true">
+    <p class="command">
+      <span class="prompt">$</span>
+      <span class="typed" [style.--len]="command.length">{{ command }}</span>
+    </p>
+    @for (line of lines; track line.path; let i = $index) {
+      <p class="line" [style.--i]="i">
+        <span [class]="'verb ' + line.verb">{{ line.verb }}</span>
+        <span class="path">{{ line.path }}</span>
+      </p>
+    }
+    <p class="line done" [style.--i]="lines.length + 1">
+      Done. The code is yours now.
+    </p>
+  </div>
+</div>

@@ -1,0 +1,69 @@
+<a class="skip" href="#main">{{ language.t().ui.skipToContent }}</a>
+
+<header>
+  <a class="brand" [routerLink]="['/', language.lang()]">
+    ngx-base-cli
+    @if (version(); as v) {
+      <span class="version" [attr.title]="language.t().ui.latestVersion">v{{ v }}</span>
+    }
+  </a>
+
+  <div class="tools">
+    <app-lang-switch />
+    <app-theme-toggle />
+    <a class="link" [href]="githubUrl">{{ language.t().ui.github }}</a>
+    <button
+      type="button"
+      class="menu-button"
+      aria-controls="docs-nav"
+      [attr.aria-expanded]="menuOpen()"
+      (click)="menuOpen.set(!menuOpen())"
+    >
+      {{ language.t().ui.menu }}
+    </button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav
+    id="docs-nav"
+    class="rail"
+    [class.open]="menuOpen()"
+    [attr.aria-label]="language.t().ui.docsNav"
+  >
+    <ul (click)="menuOpen.set(false)">
+      <li>
+        <a [routerLink]="['/', language.lang(), 'start']" routerLinkActive="active">{{ language.t().nav.start }}</a>
+      </li>
+      <li>
+        <a [routerLink]="['/', language.lang(), 'concepts']" routerLinkActive="active">{{ language.t().nav.concepts }}</a>
+      </li>
+      <li class="folder">
+        <span class="folder-name">{{ language.t().nav.modules }}</span>
+        <ul>
+          @for (id of moduleIds; track id) {
+            <li>
+              <a [routerLink]="['/', language.lang(), 'modules', id]" routerLinkActive="active">{{ id }}</a>
+            </li>
+          }
+        </ul>
+      </li>
+      <li>
+        <a [routerLink]="['/', language.lang(), 'commands']" routerLinkActive="active">{{ language.t().nav.commands }}</a>
+      </li>
+      <li>
+        <a [routerLink]="['/', language.lang(), 'config']" routerLinkActive="active">{{ language.t().nav.config }}</a>
+      </li>
+    </ul>
+  </nav>
+
+  <main id="main" tabindex="-1">
+    <router-outlet />
+  </main>
+</div>
+
+<footer>
+  <a [href]="githubUrl">{{ language.t().ui.github }}</a>
+  <a [href]="npmUrl">npm</a>
+  <span>MIT</span>
+</footer>

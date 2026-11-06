@@ -196,12 +196,12 @@ The first command of 0.2 in a project rewrites `.ngx-base-cli.json` in the new f
 ## Local development
 
 ```bash
-npm install
-npm run dev -- init --cwd ../my-app      # run from source
-npm run check && npm run typecheck && npm test
-npm run e2e                               # ng new → init → add → ng build (network)
-npm run e2e -- modern                     # one scenario (also: suffixed-relative-ssr)
-npm run schema                            # regenerate schema.json after changing CONFIG_FIELDS
+pnpm install                              # monorepo: packages/cli (the CLI) + apps/*
+pnpm dev init --cwd ../my-app             # run the CLI from source
+pnpm check && pnpm typecheck && pnpm test
+pnpm e2e                                  # ng new → init → add → ng build (network)
+pnpm e2e modern                           # one scenario (also: suffixed-relative-ssr)
+pnpm --filter ngx-base-cli schema         # regenerate packages/cli/schema.json after changing CONFIG_FIELDS
 ```
 
 ## License

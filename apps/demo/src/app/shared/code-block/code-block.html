@@ -1,0 +1,12 @@
+<figure>
+  @if (label(); as name) {
+    <figcaption>{{ name }}</figcaption>
+  }
+  <pre tabindex="0"><code>{{ code() }}</code></pre>
+  <button type="button" class="copy" (click)="copy()">
+    {{ copied() ? t().ui.copied : t().ui.copy }}
+  </button>
+  <span class="visually-hidden" aria-live="polite">
+    {{ copied() ? t().ui.copied : '' }}
+  </span>
+</figure>

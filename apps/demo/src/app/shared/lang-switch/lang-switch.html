@@ -1,0 +1,11 @@
+<nav [attr.aria-label]="language.t().ui.language">
+  @for (lang of langs; track lang) {
+    <a
+      [routerLink]="language.hrefIn(lang)"
+      [attr.lang]="lang"
+      [attr.hreflang]="lang"
+      [attr.aria-current]="language.lang() === lang ? 'true' : null"
+      [attr.aria-label]="language.t().ui.switchToLanguage + ' ' + names[lang]"
+    >{{ lang }}</a>
+  }
+</nav>

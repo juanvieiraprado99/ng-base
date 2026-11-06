@@ -6,7 +6,16 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!src/templates", "!dist", "!schema.json"]
+    "includes": [
+      "**",
+      "!**/src/templates",
+      "!**/dist",
+      "!**/.angular",
+      "!.agents",
+      "!.claude",
+      "!apps/demo",
+      "!packages/cli/schema.json"
+    ]
   },
   "formatter": {
     "enabled": true,

@@ -1,0 +1,40 @@
+<h1>{{ t().concepts.title }}</h1>
+<p class="lead">{{ t().concepts.lead }}</p>
+
+@for (section of t().concepts.sections; track section.title) {
+  <section>
+    <h2>{{ section.title }}</h2>
+    @for (paragraph of section.body; track paragraph) {
+      <p [innerHTML]="paragraph | rich"></p>
+    }
+    @if (section.code; as code) {
+      <app-code-block [code]="code" />
+    }
+    @if (section.table; as table) {
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              @for (cell of table.head; track $index) {
+                <th scope="col">{{ cell }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of table.rows; track row[0]) {
+              <tr>
+                @for (cell of row; track $index) {
+                  @if ($first) {
+                    <th scope="row">{{ cell }}</th>
+                  } @else {
+                    <td><code>{{ cell }}</code></td>
+                  }
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/ngx-base-cli/schema.json",
+  "outputDir": "src/app/core",
+  "baseApiUrl": "https://registry.npmjs.org",
+  "importStyle": "alias",
+  "useHttpResource": true,
+  "storageEngine": "localStorage",
+  "naming": "modern",
+  "project": "demo",
+  "modules": [
+    "errors",
+    "layout"
+  ]
+}

@@ -1,0 +1,31 @@
+<h1>{{ t().commands.title }}</h1>
+<p class="lead" [innerHTML]="t().commands.lead | rich"></p>
+
+@for (item of t().commands.items; track item.title; let i = $index) {
+  <section>
+    <h2><code>{{ item.title }}</code></h2>
+    <p [innerHTML]="item.body | rich"></p>
+    <app-code-block [code]="lines[i]" />
+  </section>
+}
+
+<h2>{{ t().commands.flagsTitle }}</h2>
+<p [innerHTML]="t().commands.flagsLead | rich"></p>
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">{{ t().commands.flagHead }}</th>
+        <th scope="col">{{ t().commands.flagDescriptionHead }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (flag of flags; track flag) {
+        <tr>
+          <th scope="row"><code>{{ flag }}</code></th>
+          <td [innerHTML]="t().commands.flags[flag] | rich"></td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

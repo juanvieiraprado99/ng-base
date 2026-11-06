@@ -2,7 +2,7 @@
 // End-to-end check: `ng new` → `ngx-base-cli init` + `add` → `ng build` (+ a type-check
 // of every generated file, including ones nothing imports yet).
 //
-//   npm run build && node scripts/e2e.mjs [scenario ...] [--keep] [--workdir <dir>]
+//   pnpm run build && node scripts/e2e.mjs [scenario ...] [--keep] [--workdir <dir>]
 //
 // Scenarios (default: all): modern, suffixed-relative-ssr.
 // Needs network for `ng new` (npm install). Used by the CI `e2e` job.
@@ -132,7 +132,7 @@ for (const n of names) {
   }
 }
 if (!fs.existsSync(cli)) {
-  console.error("dist/index.js not found — run `npm run build` first.");
+  console.error("dist/index.js not found — run `pnpm run build` first.");
   process.exit(2);
 }
 

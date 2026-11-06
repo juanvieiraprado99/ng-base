@@ -1,0 +1,11 @@
+<main>
+  <h1>{{ t().notFound.title }}</h1>
+  <p>{{ t().notFound.body }}</p>
+  <ul>
+    @for (lang of langs; track lang) {
+      <li>
+        <a [routerLink]="['/', lang]" [attr.lang]="lang">{{ t().notFound.link }} {{ names[lang] }}</a>
+      </li>
+    }
+  </ul>
+</main>

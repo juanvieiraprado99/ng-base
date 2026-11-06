@@ -129,7 +129,7 @@ describe("writeNgBaseConfig", () => {
 });
 
 describe("config JSON Schema", () => {
-  it("schema.json is in sync with CONFIG_FIELDS (run `npm run schema`)", async () => {
+  it("schema.json is in sync with CONFIG_FIELDS (run `pnpm run schema`)", async () => {
     const committed = await fse.readJson(
       path.join(__dirname, "..", "schema.json"),
     );

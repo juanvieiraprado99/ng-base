@@ -196,12 +196,12 @@ O primeiro comando da 0.2 num projeto reescreve o `.ngx-base-cli.json` no format
 ## Desenvolvimento local
 
 ```bash
-npm install
-npm run dev -- init --cwd ../minha-app   # correr a partir do código fonte
-npm run check && npm run typecheck && npm test
-npm run e2e                               # ng new → init → add → ng build (precisa de rede)
-npm run e2e -- modern                     # um cenário (também: suffixed-relative-ssr)
-npm run schema                            # regenerar o schema.json depois de mudar CONFIG_FIELDS
+pnpm install                              # monorepo: packages/cli (o CLI) + apps/*
+pnpm dev init --cwd ../minha-app          # correr o CLI a partir do código fonte
+pnpm check && pnpm typecheck && pnpm test
+pnpm e2e                                  # ng new → init → add → ng build (precisa de rede)
+pnpm e2e modern                           # um cenário (também: suffixed-relative-ssr)
+pnpm --filter ngx-base-cli schema         # regenerar packages/cli/schema.json depois de mudar CONFIG_FIELDS
 ```
 
 ## Licença

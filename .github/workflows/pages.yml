@@ -1,0 +1,47 @@
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/demo/**"
+      - "packages/cli/schema.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter demo build:pages
+      # GitHub Pages serves 404.html for unknown addresses; the client-rendered shell shows the not-found page.
+      - run: cp apps/demo/dist/demo/browser/index.csr.html apps/demo/dist/demo/browser/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/demo/dist/demo/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

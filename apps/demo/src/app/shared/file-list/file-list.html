@@ -1,0 +1,8 @@
+<ul [attr.aria-label]="t().ui.files">
+  @for (row of rows(); track row.dir + row.name) {
+    <li [class]="row.state">
+      <span class="path"><span class="dir">{{ row.dir }}</span><span class="name">{{ row.name }}</span></span>
+      <span class="state">{{ t().ui.filesState[row.state] }}</span>
+    </li>
+  }
+</ul>

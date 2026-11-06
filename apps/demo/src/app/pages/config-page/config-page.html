@@ -1,0 +1,25 @@
+<h1><code class="name">{{ t().config.title }}</code></h1>
+<p class="lead" [innerHTML]="t().config.lead | rich"></p>
+
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">{{ t().config.propertyHead }}</th>
+        <th scope="col">{{ t().config.typeHead }}</th>
+        <th scope="col">{{ t().config.defaultHead }}</th>
+        <th scope="col">{{ t().config.descriptionHead }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of rows; track row.name) {
+        <tr>
+          <th scope="row"><code>{{ row.name }}</code></th>
+          <td>{{ row.type }}</td>
+          <td><code>{{ row.default }}</code></td>
+          <td [innerHTML]="t().config.fields[row.name] | rich"></td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

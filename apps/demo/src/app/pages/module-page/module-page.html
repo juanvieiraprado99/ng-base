@@ -1,0 +1,21 @@
+<h1><code class="name">{{ text().title }}</code></h1>
+<p class="lead" [innerHTML]="text().summary | rich"></p>
+
+<h2>{{ t().modules.addHeading }}</h2>
+<app-code-block [code]="data().command" />
+
+<h2>{{ t().modules.filesHeading }}</h2>
+<app-file-list [files]="data().files" />
+
+<h2>{{ t().modules.wiringHeading }}</h2>
+<p [innerHTML]="text().wiring | rich"></p>
+
+<h2>{{ t().modules.usageHeading }}</h2>
+<ul>
+  @for (item of text().usage; track item) {
+    <li [innerHTML]="item | rich"></li>
+  }
+</ul>
+
+<h2>{{ t().modules.codeHeading }}</h2>
+<app-code-block [code]="data().code" [label]="data().codeFile" />
